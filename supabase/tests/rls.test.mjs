@@ -705,3 +705,88 @@ describe('student accounts', () => {
       }
     }))
 })
+
+// =============================================================================
+describe('role management', () => {
+  const NEWBIE = 'eeeeeeee-0000-4000-8000-000000000001'
+  const setRole = (id, role) => [`select public.set_user_role($1, $2)`, [id, role]]
+  const roleOf = async (q, id) => (await q(`select role from public.profiles where id = $1`, [id]))[0].role
+
+  test('admin switches a confirmed student login to teacher; it gets linked to its teacher record', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'teacher3@example.com', now())`, [NEWBIE])
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(...setRole(NEWBIE, 'teacher'))
+      await as(SUPER)
+      assert.equal(await roleOf(q, NEWBIE), 'teacher')
+      const T3 = '11111111-1111-4111-8111-000000000003'
+      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T3]))[0].profile_id, NEWBIE)
+    }))
+
+  test('switching a teacher to student unlinks the teacher record and removes access', () =>
+    tx(async ({ as, q, run }) => {
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(...setRole(U.t1, 'student'))
+      await as(SUPER)
+      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T1]))[0].profile_id, null)
+      await as(U.t1)
+      assert.equal((await q(`select id from public.schedules`)).length, 0)
+      assert.equal((await q(`select id from public.students`)).length, 0)
+    }))
+
+  test('switching a student to teacher removes its student links', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'lan.vo@example.com', now())`, [NEWBIE])
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(...setRole(NEWBIE, 'teacher'))
+      assert.equal((await q(`select 1 from public.student_accounts where profile_id = $1`, [NEWBIE])).length, 0)
+    }))
+
+  test('only an admin may change roles', () =>
+    tx(async ({ as, run }) => {
+      await as(U.t1)
+      await rejects(run(...setRole(U.t2, 'student')), '42501')
+    }))
+
+  test('the app can never grant admin, change its own role or touch another admin', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await as(SUPER)
+      await run(`update public.profiles set role = 'admin' where id = $1`, [U.t2])
+      await as(U.admin)
+      await rejects(run(...setRole(U.t1, 'admin')), '22023')
+      await rejects(run(...setRole(U.admin, 'teacher')), '42501')
+      await rejects(run(...setRole(U.t2, 'student')), '42501')
+    }))
+
+  test('a direct role update from the API is still refused', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await rejects(run(`update public.profiles set role = 'student' where id = $1`, [U.stray]), '42501')
+      // A client that sets the flag itself is still refused: the token must exist in a private table
+      // that only set_user_role writes to, inside its own transaction.
+      await run(`select set_config('tutorflow.role_change', gen_random_uuid()::text, true)`)
+      await rejects(run(`update public.profiles set role = 'student' where id = $1`, [U.stray]), '42501')
+    }))
+
+  test('admin can link and unlink a student login; others cannot; teachers cannot be linked', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'lan.vo@example.com', now())`, [NEWBIE])
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(`select public.link_student_account($1, $2)`, [NEWBIE, S(5)])
+      await run(`select public.unlink_student_account($1, $2)`, [NEWBIE, S(2)])
+      assert.deepEqual((await q(`select student_id from public.student_accounts where profile_id = $1`, [NEWBIE])).map((r) => r.student_id), [S(5)])
+      await rejects(run(`select public.link_student_account($1, $2)`, [U.t1, S(5)]), '22023')
+      await as(U.t1)
+      await rejects(run(`select public.link_student_account($1, $2)`, [NEWBIE, S(1)]), '42501')
+      await rejects(run(`select public.unlink_student_account($1, $2)`, [NEWBIE, S(5)]), '42501')
+    }))
+})

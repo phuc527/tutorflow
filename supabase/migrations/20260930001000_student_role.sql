@@ -157,3 +157,135 @@ begin
   return new;
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- Role changes by the admin
+-- -----------------------------------------------------------------------------
+-- The profiles guard refuses role changes from API sessions. set_user_role proves it is the caller by
+-- writing a one-time token both to a private table (clients can't write there) and to a
+-- transaction-local setting; the guard allows the change only when the two match.
+create table private.role_change_tokens (
+  token uuid primary key,
+  created_at timestamptz not null default now()
+);
+revoke all on private.role_change_tokens from public, anon, authenticated;
+
+create or replace function private.guard_profile_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_token uuid := nullif(current_setting('tutorflow.role_change', true), '')::uuid;
+begin
+  if (select auth.uid()) is not null then
+    if new.role is distinct from old.role and not (
+      v_token is not null and exists (select 1 from private.role_change_tokens t where t.token = v_token)
+    ) then
+      raise exception 'Changing a role is not allowed' using errcode = '42501';
+    end if;
+    if new.id is distinct from old.id or new.email is distinct from old.email then
+      raise exception 'Profile id and email are managed by the system' using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.set_user_role(p_user_id uuid, p_role text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_current text;
+  v_token   uuid := gen_random_uuid();
+begin
+  if not private.is_admin() then
+    raise exception 'Only administrators can change roles' using errcode = '42501';
+  end if;
+  if p_role is null or p_role not in ('student', 'teacher') then
+    raise exception 'Role must be student or teacher' using errcode = '22023', detail = 'role_invalid';
+  end if;
+  if p_user_id = (select auth.uid()) then
+    raise exception 'You cannot change your own role' using errcode = '42501', detail = 'role_self';
+  end if;
+
+  select p.role into v_current from public.profiles p where p.id = p_user_id for update;
+  if not found then
+    raise exception 'Account not found' using errcode = 'P0002';
+  end if;
+  if v_current = 'admin' then
+    raise exception 'Administrator accounts can only be changed in the database'
+      using errcode = '42501', detail = 'role_admin_target';
+  end if;
+  if v_current = p_role then
+    return;
+  end if;
+
+  insert into private.role_change_tokens (token) values (v_token);
+  perform set_config('tutorflow.role_change', v_token::text, true);
+  update public.profiles set role = p_role where id = p_user_id;
+  perform set_config('tutorflow.role_change', '', true);
+  delete from private.role_change_tokens where token = v_token;
+
+  if p_role = 'teacher' then
+    delete from public.student_accounts where profile_id = p_user_id;
+    perform private.link_teacher_for_user(p_user_id);
+  else
+    update public.teachers set profile_id = null where profile_id = p_user_id;
+    perform private.link_student_accounts_for_user(p_user_id);
+  end if;
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- Manual student links (admin)
+-- -----------------------------------------------------------------------------
+create or replace function public.link_student_account(p_profile_id uuid, p_student_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not private.is_admin() then
+    raise exception 'Only administrators can link accounts' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.profiles p where p.id = p_profile_id and p.role = 'student') then
+    raise exception 'Only student accounts can be linked to students'
+      using errcode = '22023', detail = 'link_not_student';
+  end if;
+  insert into public.student_accounts (profile_id, student_id)
+  values (p_profile_id, p_student_id)
+  on conflict do nothing;
+end;
+$$;
+
+create or replace function public.unlink_student_account(p_profile_id uuid, p_student_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not private.is_admin() then
+    raise exception 'Only administrators can unlink accounts' using errcode = '42501';
+  end if;
+  delete from public.student_accounts
+  where profile_id = p_profile_id and student_id = p_student_id;
+end;
+$$;
+
+revoke execute on function
+  public.set_user_role(uuid, text),
+  public.link_student_account(uuid, uuid),
+  public.unlink_student_account(uuid, uuid)
+from public, anon;
+grant execute on function
+  public.set_user_role(uuid, text),
+  public.link_student_account(uuid, uuid),
+  public.unlink_student_account(uuid, uuid)
+to authenticated;
