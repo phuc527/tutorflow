@@ -26,4 +26,14 @@ export const queryKeys = {
   dashboard: {
     all: ['dashboard'],
   },
+  users: {
+    all: ['users'],
+    list: () => ['users', 'list'],
+  },
+  portal: {
+    all: ['portal'],
+    students: () => ['portal', 'students'],
+    schedule: (params) => ['portal', 'schedule', params],
+    payments: () => ['portal', 'payments'],
+  },
 }

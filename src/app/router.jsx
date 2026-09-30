@@ -1,14 +1,14 @@
-import { createBrowserRouter, Navigate } from 'react-router'
+import { createBrowserRouter } from 'react-router'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { FullPageSpinner } from '@/components/common/States'
 import { ROLES } from '@/constants/roles'
-import { GuestOnly, RequireAuth, RequireRole } from '@/features/auth/components/RouteGuards'
+import { GuestOnly, HomeRedirect, RequireAuth, RequireRole } from '@/features/auth/components/RouteGuards'
 import NotFoundPage from './NotFoundPage'
 import RouteErrorPage from './RouteErrorPage'
 
 /*
   Route tree. Guards are "layout routes": they render <Outlet/> when allowed, or redirect.
-    GuestOnly   → /login and /signup are only for logged-out users
+    GuestOnly   → /login and /signup are only for logged-out users; "/" redirects by role
     RequireAuth → everything inside needs a session and a profile
     RequireRole → narrows further by role
   `handle.crumb` feeds the breadcrumbs.
@@ -37,35 +37,28 @@ export const router = createBrowserRouter([
             path: '/',
             element: <AppLayout />,
             children: [
-              { index: true, element: <Navigate to="/dashboard" replace /> },
+              { index: true, element: <HomeRedirect /> },
               {
-                path: 'dashboard',
-                lazy: page(() => import('@/features/dashboard/pages/DashboardPage')),
-                handle: { crumb: 'Dashboard' },
-              },
-              {
-                path: 'students',
-                lazy: page(() => import('@/features/students/pages/StudentsPage')),
-                handle: { crumb: 'Students' },
-              },
-              {
-                path: 'schedules',
-                lazy: page(() => import('@/features/schedules/pages/SchedulesPage')),
-                handle: { crumb: 'Schedules' },
-              },
-              {
-                path: 'payments',
-                lazy: page(() => import('@/features/payments/pages/PaymentsPage')),
-                handle: { crumb: 'Payments' },
-              },
-              {
-                element: <RequireRole roles={[ROLES.ADMIN]} />,
+                element: <RequireRole roles={[ROLES.ADMIN, ROLES.TEACHER]} />,
                 children: [
+                  { path: 'dashboard', lazy: page(() => import('@/features/dashboard/pages/DashboardPage')), handle: { crumb: 'Dashboard' } },
+                  { path: 'students', lazy: page(() => import('@/features/students/pages/StudentsPage')), handle: { crumb: 'Students' } },
+                  { path: 'schedules', lazy: page(() => import('@/features/schedules/pages/SchedulesPage')), handle: { crumb: 'Schedules' } },
+                  { path: 'payments', lazy: page(() => import('@/features/payments/pages/PaymentsPage')), handle: { crumb: 'Payments' } },
                   {
-                    path: 'teachers',
-                    lazy: page(() => import('@/features/teachers/pages/TeachersPage')),
-                    handle: { crumb: 'Teachers' },
+                    element: <RequireRole roles={[ROLES.ADMIN]} />,
+                    children: [
+                      { path: 'teachers', lazy: page(() => import('@/features/teachers/pages/TeachersPage')), handle: { crumb: 'Teachers' } },
+                      { path: 'users', lazy: page(() => import('@/features/users/pages/UsersPage')), handle: { crumb: 'Users' } },
+                    ],
                   },
+                ],
+              },
+              {
+                element: <RequireRole roles={[ROLES.STUDENT]} />,
+                children: [
+                  { path: 'my/classes', lazy: page(() => import('@/features/portal/pages/MyClassesPage')), handle: { crumb: 'My classes' } },
+                  { path: 'my/fees', lazy: page(() => import('@/features/portal/pages/MyFeesPage')), handle: { crumb: 'My fees' } },
                 ],
               },
             ],

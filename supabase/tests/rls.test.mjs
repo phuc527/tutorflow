@@ -43,6 +43,11 @@ before(async () => {
     ($2, 'TEACHER1@example.com', '{}', now()),
     ($3, 'teacher2@example.com', '{}', now()),
     ($4, 'stray@example.com', '{}', now())`, [U.admin, U.t1, U.t2, U.stray])
+
+  // Since migration 0010 every new login is a student. The fixed teacher logins are switched to
+  // teacher the way an admin would, then linked (link_teacher_for_user only links teacher-role logins).
+  await db.query(`update public.profiles set role = 'teacher' where id = any($1::uuid[])`, [[U.t1, U.t2, U.stray]])
+  await db.query(`select private.link_teacher_for_user(id) from public.profiles where id = any($1::uuid[])`, [[U.t1, U.t2, U.stray]])
 })
 
 /** Run `fn` in a transaction that is always rolled back. `as(uid|null)` switches the acting user. */
@@ -101,10 +106,10 @@ const schedule = (teacher, student, start, end) => [
 
 // =============================================================================
 describe('sign-up and roles', () => {
-  test('new login gets a teacher profile; role in sign-up metadata is ignored', () =>
+  test('new login gets a student profile; role in sign-up metadata is ignored', () =>
     tx(async ({ q }) => {
       const [p] = await q(`select role, full_name from public.profiles where id = $1`, [U.admin])
-      assert.equal(p.role, 'teacher')
+      assert.equal(p.role, 'student')
       assert.equal(p.full_name, 'Owner')
     }))
 
@@ -487,10 +492,10 @@ describe('review findings', () => {
       // …and learns nothing about the teacher record (name is not copied before confirmation)
       assert.equal((await q(`select full_name from public.profiles where id = $1`, [ATTACKER]))[0].full_name, 'teacher3')
 
-      // Linking happens only once the email is confirmed (i.e. the owner proved they control it).
+      // Confirming makes it a student login; only an admin switching it to teacher links the record.
       await as(SUPER)
       await run(`update auth.users set email_confirmed_at = now() where id = $1`, [ATTACKER])
-      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T3]))[0].profile_id, ATTACKER)
+      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T3]))[0].profile_id, null)
     }))
 
   test('[SEC-1] a teacher record created later is not linked to an unconfirmed login', () =>
@@ -618,5 +623,239 @@ describe('profile theme', () => {
     tx(async ({ as, run }) => {
       await as(U.t1)
       await rejects(run(`update public.profiles set theme = 'purple' where id = $1`, [U.t1]), '23514')
+    }))
+})
+
+// =============================================================================
+describe('student accounts', () => {
+  const STU = 'dddddddd-0000-4000-8000-000000000001' // lan.vo@example.com (student S2)
+  const signUpStudent = (email = 'lan.vo@example.com', confirmed = true) => [
+    `insert into auth.users (id, email, email_confirmed_at) values ($1, $2, ${confirmed ? 'now()' : 'null'})`,
+    [STU, email],
+  ]
+  const links = (q) => q(`select student_id from public.student_accounts where profile_id = $1 order by student_id`, [STU])
+
+  test('a confirmed login is linked to the student with its email', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent('LAN.VO@example.com'))
+      assert.deepEqual((await links(q)).map((r) => r.student_id), [S(2)])
+    }))
+
+  test('an unconfirmed login is linked only once it confirms', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent('lan.vo@example.com', false))
+      assert.equal((await links(q)).length, 0)
+      await run(`update auth.users set email_confirmed_at = now() where id = $1`, [STU])
+      assert.equal((await links(q)).length, 1)
+    }))
+
+  test('a parent login is linked to every child sharing the email, including ones added later', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent())
+      await run(`update public.students set email = 'lan.vo@example.com' where id = $1`, [S(3)])
+      assert.deepEqual((await links(q)).map((r) => r.student_id), [S(2), S(3)])
+    }))
+
+  test('email change moves the link: the old login loses the student', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent())
+      await run(`update public.students set email = 'someone.else@example.com' where id = $1`, [S(2)])
+      assert.equal((await links(q)).length, 0)
+    }))
+
+  test('teacher logins are never linked to students', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`update public.students set email = 'teacher1@example.com' where id = $1`, [S(4)])
+      assert.equal((await q(`select 1 from public.student_accounts where profile_id = $1`, [U.t1])).length, 0)
+    }))
+
+  test('once an admin exists, a student email may sign up and an unknown one may not', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await run(...signUpStudent('lan.vo@example.com', false))
+      await rejects(run(`insert into auth.users (id, email) values (gen_random_uuid(), 'nobody@example.com')`), '42501')
+    }))
+
+  test('only admins can read student links; students and teachers cannot', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent())
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      assert.equal((await q(`select * from public.student_accounts`)).length, 1)
+      await as(STU)
+      assert.equal((await q(`select * from public.student_accounts`)).length, 0)
+      await as(U.t2)
+      assert.equal((await q(`select * from public.student_accounts`)).length, 0)
+      await rejects(run(`insert into public.student_accounts (profile_id, student_id) values ($1, $2)`, [U.t2, S(1)]), '42501')
+    }))
+
+  test('a student login reads nothing from the regular tables', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent())
+      await as(STU)
+      for (const table of ['teachers', 'students', 'teacher_students', 'schedules', 'payments', 'payment_history']) {
+        assert.equal((await q(`select * from public.${table}`)).length, 0, table)
+      }
+    }))
+})
+
+// =============================================================================
+describe('role management', () => {
+  const NEWBIE = 'eeeeeeee-0000-4000-8000-000000000001'
+  const setRole = (id, role) => [`select public.set_user_role($1, $2)`, [id, role]]
+  const roleOf = async (q, id) => (await q(`select role from public.profiles where id = $1`, [id]))[0].role
+
+  test('admin switches a confirmed student login to teacher; it gets linked to its teacher record', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'teacher3@example.com', now())`, [NEWBIE])
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(...setRole(NEWBIE, 'teacher'))
+      await as(SUPER)
+      assert.equal(await roleOf(q, NEWBIE), 'teacher')
+      const T3 = '11111111-1111-4111-8111-000000000003'
+      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T3]))[0].profile_id, NEWBIE)
+    }))
+
+  test('switching a teacher to student unlinks the teacher record and removes access', () =>
+    tx(async ({ as, q, run }) => {
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(...setRole(U.t1, 'student'))
+      await as(SUPER)
+      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T1]))[0].profile_id, null)
+      await as(U.t1)
+      assert.equal((await q(`select id from public.schedules`)).length, 0)
+      assert.equal((await q(`select id from public.students`)).length, 0)
+    }))
+
+  test('switching a student to teacher removes its student links', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'lan.vo@example.com', now())`, [NEWBIE])
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(...setRole(NEWBIE, 'teacher'))
+      assert.equal((await q(`select 1 from public.student_accounts where profile_id = $1`, [NEWBIE])).length, 0)
+    }))
+
+  test('only an admin may change roles', () =>
+    tx(async ({ as, run }) => {
+      await as(U.t1)
+      await rejects(run(...setRole(U.t2, 'student')), '42501')
+    }))
+
+  test('the app can never grant admin, change its own role or touch another admin', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await as(SUPER)
+      await run(`update public.profiles set role = 'admin' where id = $1`, [U.t2])
+      await as(U.admin)
+      await rejects(run(...setRole(U.t1, 'admin')), '22023')
+      await rejects(run(...setRole(U.admin, 'teacher')), '42501')
+      await rejects(run(...setRole(U.t2, 'student')), '42501')
+    }))
+
+  test('a direct role update from the API is still refused', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await rejects(run(`update public.profiles set role = 'student' where id = $1`, [U.stray]), '42501')
+      // A client that sets the flag itself is still refused: the token must exist in a private table
+      // that only set_user_role writes to, inside its own transaction.
+      await run(`select set_config('tutorflow.role_change', gen_random_uuid()::text, true)`)
+      await rejects(run(`update public.profiles set role = 'student' where id = $1`, [U.stray]), '42501')
+    }))
+
+  test('admin can link and unlink a student login; others cannot; teachers cannot be linked', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'lan.vo@example.com', now())`, [NEWBIE])
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(`select public.link_student_account($1, $2)`, [NEWBIE, S(5)])
+      await run(`select public.unlink_student_account($1, $2)`, [NEWBIE, S(2)])
+      assert.deepEqual((await q(`select student_id from public.student_accounts where profile_id = $1`, [NEWBIE])).map((r) => r.student_id), [S(5)])
+      await rejects(run(`select public.link_student_account($1, $2)`, [U.t1, S(5)]), '22023')
+      await as(U.t1)
+      await rejects(run(`select public.link_student_account($1, $2)`, [NEWBIE, S(1)]), '42501')
+      await rejects(run(`select public.unlink_student_account($1, $2)`, [NEWBIE, S(5)]), '42501')
+    }))
+})
+
+// =============================================================================
+describe('student portal functions', () => {
+  const STU = 'ffffffff-0000-4000-8000-000000000001'
+  async function studentWithData({ as, run }) {
+    await as(SUPER)
+    await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'lan.vo@example.com', now())`, [STU])
+    // T2 teaches S2 (lan.vo) and S4. One class and one payment each.
+    await run(...schedule(T2, S(2), '2026-10-05T02:00:00Z', '2026-10-05T03:00:00Z'))
+    await run(...schedule(T2, S(4), '2026-10-05T04:00:00Z', '2026-10-05T05:00:00Z'))
+    await run(`insert into public.payments (student_id, teacher_id, billing_month, amount) values ($1, $2, '2026-10-01', 500000), ($3, $2, '2026-10-01', 700000)`, [S(2), T2, S(4)])
+  }
+
+  test('a student sees only their own classes, with the teacher name but no teacher details', () =>
+    tx(async (ctx) => {
+      await studentWithData(ctx)
+      await ctx.as(STU)
+      const rows = await ctx.q(`select * from public.my_schedule('2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z')`)
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0].student_id, S(2))
+      assert.equal(rows[0].teacher_name, 'Trần Thị Bình')
+      assert.deepEqual(Object.keys(rows[0]).sort(), ['end_time', 'id', 'location', 'start_time', 'student_id', 'student_name', 'subject', 'teacher_name', 'title'])
+    }))
+
+  test('a student sees only their own fees and students', () =>
+    tx(async (ctx) => {
+      await studentWithData(ctx)
+      await ctx.as(STU)
+      const fees = await ctx.q(`select * from public.my_payments()`)
+      assert.deepEqual(fees.map((f) => [f.student_id, Number(f.amount), f.status]), [[S(2), 500000, 'unpaid']])
+      assert.deepEqual((await ctx.q(`select id from public.my_students()`)).map((r) => r.id), [S(2)])
+    }))
+
+  test('teachers and admins get nothing from the student functions', () =>
+    tx(async (ctx) => {
+      await studentWithData(ctx)
+      await promoteAdmin(ctx.as, ctx.run)
+      for (const who of [U.t2, U.admin]) {
+        await ctx.as(who)
+        assert.equal((await ctx.q(`select * from public.my_schedule('2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z')`)).length, 0)
+        assert.equal((await ctx.q(`select * from public.my_payments()`)).length, 0)
+        assert.equal((await ctx.q(`select * from public.my_students()`)).length, 0)
+      }
+    }))
+
+  test('a student with no links gets empty results, not an error', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'orphan@example.com', now())`, [STU])
+      await as(STU)
+      assert.equal((await q(`select * from public.my_students()`)).length, 0)
+      assert.equal((await q(`select * from public.my_payments()`)).length, 0)
+    }))
+
+  test('my_schedule rejects empty, reversed or over-long ranges', () =>
+    tx(async (ctx) => {
+      await studentWithData(ctx)
+      await ctx.as(STU)
+      await rejects(ctx.run(`select * from public.my_schedule('2026-10-02T00:00:00Z', '2026-10-01T00:00:00Z')`), '22023')
+      await rejects(ctx.run(`select * from public.my_schedule('2026-01-01T00:00:00Z', '2026-06-01T00:00:00Z')`), '22023')
+      await rejects(ctx.run(`select * from public.my_schedule(null, '2026-06-01T00:00:00Z')`), '22023')
+    }))
+
+  test('anonymous visitors cannot call the student functions', () =>
+    tx(async ({ as, run }) => {
+      await as(null)
+      await rejects(run(`select * from public.my_payments()`), '42501')
     }))
 })

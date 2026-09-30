@@ -125,6 +125,11 @@ describe('sign-up', () => {
 
   test('a sign-up refused by the database allowlist gets an actionable message', () => {
     const refused = { name: 'AuthApiError', __isAuthError: true, status: 500, code: 'unexpected_failure', message: 'Database error saving new user' }
-    expect(toAppError(refused).message).toMatch(/hasn’t been added by your tutoring center/)
+    expect(toAppError(refused).message).toMatch(/isn’t registered with your tutoring center/)
+  })
+
+  test('role management refusals get specific messages', () => {
+    expect(toAppError({ code: '42501', message: 'x', details: 'role_self' }).message).toMatch(/your own role/)
+    expect(toAppError({ code: '42501', message: 'x', details: 'role_admin_target' }).message).toMatch(/in the database/)
   })
 })
