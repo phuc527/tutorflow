@@ -43,6 +43,11 @@ before(async () => {
     ($2, 'TEACHER1@example.com', '{}', now()),
     ($3, 'teacher2@example.com', '{}', now()),
     ($4, 'stray@example.com', '{}', now())`, [U.admin, U.t1, U.t2, U.stray])
+
+  // Since migration 0010 every new login is a student. The fixed teacher logins are switched to
+  // teacher the way an admin would, then linked (link_teacher_for_user only links teacher-role logins).
+  await db.query(`update public.profiles set role = 'teacher' where id = any($1::uuid[])`, [[U.t1, U.t2, U.stray]])
+  await db.query(`select private.link_teacher_for_user(id) from public.profiles where id = any($1::uuid[])`, [[U.t1, U.t2, U.stray]])
 })
 
 /** Run `fn` in a transaction that is always rolled back. `as(uid|null)` switches the acting user. */
@@ -101,10 +106,10 @@ const schedule = (teacher, student, start, end) => [
 
 // =============================================================================
 describe('sign-up and roles', () => {
-  test('new login gets a teacher profile; role in sign-up metadata is ignored', () =>
+  test('new login gets a student profile; role in sign-up metadata is ignored', () =>
     tx(async ({ q }) => {
       const [p] = await q(`select role, full_name from public.profiles where id = $1`, [U.admin])
-      assert.equal(p.role, 'teacher')
+      assert.equal(p.role, 'student')
       assert.equal(p.full_name, 'Owner')
     }))
 
@@ -487,10 +492,10 @@ describe('review findings', () => {
       // …and learns nothing about the teacher record (name is not copied before confirmation)
       assert.equal((await q(`select full_name from public.profiles where id = $1`, [ATTACKER]))[0].full_name, 'teacher3')
 
-      // Linking happens only once the email is confirmed (i.e. the owner proved they control it).
+      // Confirming makes it a student login; only an admin switching it to teacher links the record.
       await as(SUPER)
       await run(`update auth.users set email_confirmed_at = now() where id = $1`, [ATTACKER])
-      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T3]))[0].profile_id, ATTACKER)
+      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T3]))[0].profile_id, null)
     }))
 
   test('[SEC-1] a teacher record created later is not linked to an unconfirmed login', () =>
@@ -618,5 +623,85 @@ describe('profile theme', () => {
     tx(async ({ as, run }) => {
       await as(U.t1)
       await rejects(run(`update public.profiles set theme = 'purple' where id = $1`, [U.t1]), '23514')
+    }))
+})
+
+// =============================================================================
+describe('student accounts', () => {
+  const STU = 'dddddddd-0000-4000-8000-000000000001' // lan.vo@example.com (student S2)
+  const signUpStudent = (email = 'lan.vo@example.com', confirmed = true) => [
+    `insert into auth.users (id, email, email_confirmed_at) values ($1, $2, ${confirmed ? 'now()' : 'null'})`,
+    [STU, email],
+  ]
+  const links = (q) => q(`select student_id from public.student_accounts where profile_id = $1 order by student_id`, [STU])
+
+  test('a confirmed login is linked to the student with its email', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent('LAN.VO@example.com'))
+      assert.deepEqual((await links(q)).map((r) => r.student_id), [S(2)])
+    }))
+
+  test('an unconfirmed login is linked only once it confirms', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent('lan.vo@example.com', false))
+      assert.equal((await links(q)).length, 0)
+      await run(`update auth.users set email_confirmed_at = now() where id = $1`, [STU])
+      assert.equal((await links(q)).length, 1)
+    }))
+
+  test('a parent login is linked to every child sharing the email, including ones added later', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent())
+      await run(`update public.students set email = 'lan.vo@example.com' where id = $1`, [S(3)])
+      assert.deepEqual((await links(q)).map((r) => r.student_id), [S(2), S(3)])
+    }))
+
+  test('email change moves the link: the old login loses the student', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent())
+      await run(`update public.students set email = 'someone.else@example.com' where id = $1`, [S(2)])
+      assert.equal((await links(q)).length, 0)
+    }))
+
+  test('teacher logins are never linked to students', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`update public.students set email = 'teacher1@example.com' where id = $1`, [S(4)])
+      assert.equal((await q(`select 1 from public.student_accounts where profile_id = $1`, [U.t1])).length, 0)
+    }))
+
+  test('once an admin exists, a student email may sign up and an unknown one may not', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await run(...signUpStudent('lan.vo@example.com', false))
+      await rejects(run(`insert into auth.users (id, email) values (gen_random_uuid(), 'nobody@example.com')`), '42501')
+    }))
+
+  test('only admins can read student links; students and teachers cannot', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent())
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      assert.equal((await q(`select * from public.student_accounts`)).length, 1)
+      await as(STU)
+      assert.equal((await q(`select * from public.student_accounts`)).length, 0)
+      await as(U.t2)
+      assert.equal((await q(`select * from public.student_accounts`)).length, 0)
+      await rejects(run(`insert into public.student_accounts (profile_id, student_id) values ($1, $2)`, [U.t2, S(1)]), '42501')
+    }))
+
+  test('a student login reads nothing from the regular tables', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(...signUpStudent())
+      await as(STU)
+      for (const table of ['teachers', 'students', 'teacher_students', 'schedules', 'payments', 'payment_history']) {
+        assert.equal((await q(`select * from public.${table}`)).length, 0, table)
+      }
     }))
 })
