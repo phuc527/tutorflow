@@ -61,6 +61,14 @@ export function toAppError(error) {
   if (constraint) return new AppError(CONSTRAINT_MESSAGES[constraint], { code: error.code, cause: error })
   if (CODE_MESSAGES[error.code]) return new AppError(CODE_MESSAGES[error.code], { code: error.code, cause: error })
 
+  // Sign-up refused by the allowlist trigger (migration 0008). Supabase Auth hides the database
+  // error behind this generic message; at sign-up it only happens for emails the admin hasn't added.
+  if (error.message === 'Database error saving new user') {
+    return new AppError(
+      'This email hasn’t been added by your tutoring center. Ask your administrator to add you as a teacher first.',
+      { code: error.code, cause: error },
+    )
+  }
   // Supabase Auth errors already carry readable messages ("Invalid login credentials").
   if (error.name === 'AuthApiError' || error.__isAuthError) {
     return new AppError(error.message, { code: error.code, cause: error })

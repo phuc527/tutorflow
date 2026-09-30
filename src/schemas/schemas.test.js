@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { formToSchedule, scheduleSchema, scheduleToForm } from './schedule'
 import { studentSchema } from './student'
 import { teacherSchema } from './teacher'
+import { signupSchema } from './auth'
 import { toAppError } from '@/services/errors'
 import { emptyToNull, ilikeAny, pageRange } from '@/services/query'
 
@@ -96,5 +97,34 @@ describe('review fixes: form validation', () => {
   test('new database errors map to specific messages', () => {
     expect(toAppError({ code: '23514', message: 'x', details: 'payments_amount_locked' }).message).toMatch(/Mark it unpaid first/)
     expect(toAppError({ code: '23001', message: 'violates RESTRICT setting of foreign key constraint "schedules_student_id_fkey"' }).message).toMatch(/classes on the calendar/)
+  })
+})
+
+describe('sign-up', () => {
+  const valid = { fullName: 'Nguyễn Văn An', email: ' teacher1@example.com ', password: 'secret123', confirmPassword: 'secret123' }
+
+  test('accepts a valid form and trims the email', () => {
+    expect(signupSchema.parse(valid).email).toBe('teacher1@example.com')
+  })
+
+  test('requires a password of at least 8 characters', () => {
+    const result = signupSchema.safeParse({ ...valid, password: 'short', confirmPassword: 'short' })
+    expect(result.success).toBe(false)
+    expect(result.error.issues[0].path).toEqual(['password'])
+  })
+
+  test('rejects a confirmation that does not match, on the confirmPassword field', () => {
+    const result = signupSchema.safeParse({ ...valid, confirmPassword: 'secret124' })
+    expect(result.success).toBe(false)
+    expect(result.error.issues[0].path).toEqual(['confirmPassword'])
+  })
+
+  test('requires a full name', () => {
+    expect(signupSchema.safeParse({ ...valid, fullName: ' ' }).success).toBe(false)
+  })
+
+  test('a sign-up refused by the database allowlist gets an actionable message', () => {
+    const refused = { name: 'AuthApiError', __isAuthError: true, status: 500, code: 'unexpected_failure', message: 'Database error saving new user' }
+    expect(toAppError(refused).message).toMatch(/hasn’t been added by your tutoring center/)
   })
 })

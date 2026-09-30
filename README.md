@@ -92,6 +92,9 @@ Key decisions (details in the migration comments):
 
 - **Teacher records link only to logins with a confirmed email.** An unconfirmed sign-up using a
   teacher's address gets no access and learns nothing about the record.
+- **Self sign-up is limited to teachers the admin has added.** A trigger on `auth.users` refuses any
+  new login whose email doesn't match a non-inactive teacher record (until the first admin exists, so
+  that admin can be created).
 - **The role lives only in `profiles.role`.** New logins are always `teacher`, and sign-up metadata is
   ignored. A column grant plus a trigger stop users changing their own role. Admins are promoted with SQL.
 - **RLS helper functions** (`private.is_admin()`, `private.current_teacher_id()`,
@@ -152,15 +155,19 @@ npx supabase db push         # applies supabase/migrations/*
 
 When you add a migration later, apply only the new file (Option A) or run `db push` again (Option B).
 
-### 3. Lock down sign-ups
+### 3. Configure sign-ups
 
-**Dashboard → Authentication → Sign In / Providers → turn off "Allow new users to sign up".**
-Accounts are created by the admin. Without this, anyone holding the (public) key could register;
-they would see no data, but the account shouldn't exist.
+**Dashboard → Authentication → Sign In / Providers:** turn **on** "Allow new users to sign up" and keep
+**"Confirm email" on**.
+
+Teachers create their own account at `/signup`, but only with an email the admin has already added as
+a teacher: the database refuses every other address (migration 0008). Email confirmation proves they
+own the address before the login is linked to the teacher record.
 
 ### 4. Create the first admin
 
-No password is ever stored in this repository. Instead:
+Do this before adding any teacher. While no admin exists, the sign-up gate lets any login be created;
+it closes as soon as the first admin is promoted. No password is ever stored in this repository. Instead:
 
 1. **Dashboard → Authentication → Users → Add user → Create new user**: your email, a strong password, tick *Auto Confirm User*.
 2. **SQL Editor:**
@@ -174,9 +181,9 @@ service role), never through the app's API.
 ### 5. Give teachers a login
 
 1. In the app (as admin) create the teacher record with their email. The *Login* column shows **None**.
-2. In the Dashboard, **Add user** with the same email (or *Invite user* to email them a link).
-3. A trigger links the login to the teacher record automatically, and *Login* turns to **Linked**.
-   It works in either order.
+2. The teacher opens `/signup`, uses that same email, and clicks the confirmation link they receive.
+   (Alternatively, **Add user** in the Dashboard with the same email.)
+3. A trigger links the confirmed login to the teacher record automatically, and *Login* turns to **Linked**.
 
 With the seed data, create `teacher1@example.com` and `teacher2@example.com` to try the teacher role.
 
@@ -211,7 +218,7 @@ npm run dev              # http://localhost:5173
 5. In **Supabase → Authentication → URL Configuration**:
    - *Site URL*: `https://<your-app>.vercel.app`
    - *Redirect URLs*: add `https://<your-app>.vercel.app/**` (and `http://localhost:5173/**` for local dev),
-     so invite and password-reset links return to the app.
+     so sign-up confirmation, invite and password-reset links return to the app.
 
 `vercel.json` already contains:
 - a **rewrite of every path to `index.html`**, so refreshing `/payments` works. Without it Vercel
@@ -247,6 +254,8 @@ Decisions made where the brief left room; all are easy to change.
   An inactive teacher immediately loses access.
 - **Unpaid is shown in amber, not red**, because green against red is indistinguishable for the most
   common colour blindness (validated: ΔE 5.0 vs 17.4 for green/amber).
-- **Teacher logins are created in the Supabase Dashboard.** Creating auth users from the app would need
+- **Teachers sign themselves up; the admin can't invite from the app.** Sending invitations would need
   the service-role key on a server (e.g. a Supabase Edge Function), which was out of scope.
+- **The sign-up error reveals whether an email belongs to a teacher.** A generic message would confuse
+  real teachers; for an internal tool this trade-off was accepted.
 - No password-reset screen in the app yet; admins can send a reset from the Dashboard.

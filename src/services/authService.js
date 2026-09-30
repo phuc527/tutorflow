@@ -8,6 +8,22 @@ export const authService = {
     return data
   },
 
+  /**
+   * Create a login. The database only accepts emails the admin has added as teachers (migration 0008).
+   * With email confirmation on, Supabase returns no session: the user must click the emailed link,
+   * which lands on /login already signed in. For an email that already has an account Supabase also
+   * returns success without sending anything, so the UI can't be used to probe for accounts.
+   */
+  async signUp({ fullName, email, password }) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName }, emailRedirectTo: `${window.location.origin}/login` },
+    })
+    if (error) throw toAppError(error)
+    return data
+  },
+
   async signOut() {
     // 'local' revokes this device's session on the server and removes it from this browser.
     // If the server can't be reached, supabase-js keeps the session, so tell the user plainly

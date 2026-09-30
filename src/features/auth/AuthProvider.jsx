@@ -40,6 +40,7 @@ export function AuthProvider({ children }) {
   })
 
   const signIn = useCallback((credentials) => authService.signIn(credentials), [])
+  const signUp = useCallback((details) => authService.signUp(details), [])
   const signOut = useCallback(() => authService.signOut(), [])
 
   const value = useMemo(() => {
@@ -54,9 +55,10 @@ export function AuthProvider({ children }) {
       profileError: profileQuery.error,
       refetchProfile: profileQuery.refetch,
       signIn,
+      signUp,
       signOut,
     }
-  }, [session, userId, profileQuery.data, profileQuery.isPending, profileQuery.error, profileQuery.refetch, signIn, signOut])
+  }, [session, userId, profileQuery.data, profileQuery.isPending, profileQuery.error, profileQuery.refetch, signIn, signUp, signOut])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

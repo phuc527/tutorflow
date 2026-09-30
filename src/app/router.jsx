@@ -8,7 +8,7 @@ import RouteErrorPage from './RouteErrorPage'
 
 /*
   Route tree. Guards are "layout routes": they render <Outlet/> when allowed, or redirect.
-    GuestOnly   → /login is only for logged-out users
+    GuestOnly   → /login and /signup are only for logged-out users
     RequireAuth → everything inside needs a session and a profile
     RequireRole → narrows further by role
   `handle.crumb` feeds the breadcrumbs.
@@ -25,7 +25,10 @@ export const router = createBrowserRouter([
     children: [
       {
         element: <GuestOnly />,
-        children: [{ path: '/login', lazy: page(() => import('@/features/auth/pages/LoginPage')) }],
+        children: [
+          { path: '/login', lazy: page(() => import('@/features/auth/pages/LoginPage')) },
+          { path: '/signup', lazy: page(() => import('@/features/auth/pages/SignupPage')) },
+        ],
       },
       {
         element: <RequireAuth />,

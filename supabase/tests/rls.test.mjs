@@ -561,3 +561,34 @@ describe('review findings', () => {
       await run(`update public.profiles set avatar_url = 'https://example.com/a.png' where id = $1`, [U.t1])
     }))
 })
+
+// =============================================================================
+describe('sign-up allowlist', () => {
+  const NEWCOMER = 'cccccccc-0000-4000-8000-000000000001'
+  const signUp = (email) => [`insert into auth.users (id, email) values ($1, $2)`, [NEWCOMER, email]]
+
+  test('before any admin exists, anyone can be created (bootstraps the first admin)', () =>
+    tx(async ({ as, run }) => {
+      await as(SUPER)
+      await run(...signUp('future-admin@example.com'))
+    }))
+
+  test('once an admin exists, an email with no teacher record is refused', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await rejects(run(...signUp('stranger@example.com')), '42501')
+    }))
+
+  test('once an admin exists, the email of an added teacher can sign up (case-insensitive)', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await run(...signUp('Teacher3@Example.com')) // seeded teacher, on_leave
+    }))
+
+  test('the email of an inactive teacher is refused', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await run(`update public.teachers set status = 'inactive' where email = 'teacher3@example.com'`)
+      await rejects(run(...signUp('teacher3@example.com')), '42501')
+    }))
+})

@@ -43,7 +43,7 @@ export function RequireRole({ roles }) {
   return <Outlet />
 }
 
-/** For /login: already-authenticated users are bounced to the app. */
+/** For /login and /signup: already-authenticated users are bounced to the app. */
 export function GuestOnly() {
   const { session, isLoading } = useAuth()
   const location = useLocation()
