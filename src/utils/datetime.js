@@ -28,6 +28,11 @@ export function nowInAppZone() {
   return TZDate.tz(APP_TIMEZONE)
 }
 
+/** First day of the current month in the app timezone, as 'yyyy-MM-01' (the payments.billing_month format). */
+export function currentBillingMonth() {
+  return formatInAppZone(new Date(), 'yyyy-MM-01')
+}
+
 /**
  * Convert an <input type="datetime-local"> value ("2026-09-30T14:00"),
  * which has no timezone, into an ISO instant by reading it as app-timezone wall time.

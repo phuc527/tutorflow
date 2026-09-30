@@ -193,6 +193,21 @@ describe('admin management', () => {
       await rejects(run(`insert into public.teacher_students (teacher_id, student_id) values ($1, $2)`, [T1, S(2)]), '42501')
     }))
 
+  test('set_student_teachers replaces a student’s assignments atomically (admin only)', () =>
+    tx(async ({ as, q, run }) => {
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      // S1 is assigned to T1 and T2 in the seed → keep only T2
+      await run(`select public.set_student_teachers($1, $2)`, [S(1), [T2]])
+      const rows = await q(`select teacher_id from public.teacher_students where student_id = $1`, [S(1)])
+      assert.deepEqual(rows.map((r) => r.teacher_id), [T2])
+
+      await as(U.t1)
+      await rejects(run(`select public.set_student_teachers($1, $2)`, [S(1), [T1]]), '42501')
+      await as(null)
+      await rejects(run(`select public.set_student_teachers($1, $2)`, [S(1), [T1]]), '42501')
+    }))
+
   test('admin cannot set teachers.profile_id directly', () =>
     tx(async ({ as, run }) => {
       await promoteAdmin(as, run)

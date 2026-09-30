@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -22,6 +23,13 @@ export function DataTable({
   emptyAction,
   pagination,
 }) {
+  // If the current page no longer exists (e.g. its last row was deleted), step back to the last real page.
+  const lastPage = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.pageSize)) : 1
+  const pageOutOfRange = Boolean(pagination && !isLoading && !error && pagination.total > 0 && pagination.page > lastPage)
+  useEffect(() => {
+    if (pageOutOfRange) pagination.onPageChange(lastPage)
+  }, [pageOutOfRange, lastPage, pagination])
+
   if (isLoading) return <LoadingState />
   if (error) return <ErrorState title="Could not load data" error={error} onRetry={onRetry} />
   if (!data?.length) return <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />

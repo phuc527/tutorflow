@@ -33,7 +33,8 @@ export const authService = {
     return unwrap(
       await supabase
         .from('profiles')
-        .select('id, email, full_name, role, phone, avatar_url, teacher:teachers(id, full_name, status)')
+        // `!teachers_profile_id_fkey` names the FK to follow, so the embed can't become ambiguous later.
+        .select('id, email, full_name, role, phone, avatar_url, teacher:teachers!teachers_profile_id_fkey(id, full_name, status)')
         .eq('id', userId)
         .single(),
     )
