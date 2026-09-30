@@ -379,6 +379,22 @@ describe('payments', () => {
       await rejects(run(...insertPayment(T1, S(3), '2026-09-15')), '23514')
     }))
 
+  test('teachers cannot read each other’s payments or payment history', () =>
+    tx(async ({ as, q, run }) => {
+      await as(U.t2)
+      const [p] = await q(...insertPayment(T2, S(1))) // S1 is shared by T1 and T2
+      await run(`update public.payments set status = 'paid' where id = $1`, [p.id])
+      assert.equal((await q(`select id from public.payment_history where payment_id = $1`, [p.id])).length, 2)
+
+      await as(U.t1)
+      assert.equal((await q(`select id from public.payments where id = $1`, [p.id])).length, 0)
+      assert.equal((await q(`select id from public.payment_history where payment_id = $1`, [p.id])).length, 0)
+
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      assert.equal((await q(`select id from public.payment_history where payment_id = $1`, [p.id])).length, 2)
+    }))
+
   test('generate_monthly_payments bills assigned active students from scheduled hours', () =>
     tx(async ({ as, q, run }) => {
       await as(U.t1)

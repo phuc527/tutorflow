@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router'
+import { Outlet, useNavigation } from 'react-router'
 import { Menu } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { toast } from 'sonner'
@@ -18,6 +18,7 @@ import { UserMenu } from './UserMenu'
 export function AppLayout() {
   const { profile, role, signOut } = useAuth()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const navigation = useNavigation() // 'loading' while a lazy page's code downloads
   const items = navItemsForRole(role)
 
   const handleSignOut = async () => {
@@ -49,6 +50,9 @@ export function AppLayout() {
 
       <div className="lg:pl-60">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur sm:px-6">
+          {navigation.state === 'loading' && (
+            <div className="absolute inset-x-0 bottom-0 h-0.5 animate-pulse bg-primary" role="progressbar" aria-label="Loading page" />
+          )}
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setDrawerOpen(true)}>
             <Menu />
             <span className="sr-only">Open navigation</span>

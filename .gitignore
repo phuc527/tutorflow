@@ -9,3 +9,4 @@ supabase/.temp
 supabase/.branches
 # Unrelated tooling clone that lives in this folder
 karpathy-claude-skills/
+supabase/.generated

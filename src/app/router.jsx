@@ -1,14 +1,8 @@
 import { createBrowserRouter, Navigate } from 'react-router'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { FullPageSpinner } from '@/components/common/States'
 import { ROLES } from '@/constants/roles'
 import { GuestOnly, RequireAuth, RequireRole } from '@/features/auth/components/RouteGuards'
-import LoginPage from '@/features/auth/pages/LoginPage'
-import UnauthorizedPage from '@/features/auth/pages/UnauthorizedPage'
-import DashboardPage from '@/features/dashboard/pages/DashboardPage'
-import TeachersPage from '@/features/teachers/pages/TeachersPage'
-import StudentsPage from '@/features/students/pages/StudentsPage'
-import SchedulesPage from '@/features/schedules/pages/SchedulesPage'
-import PaymentsPage from '@/features/payments/pages/PaymentsPage'
 import NotFoundPage from './NotFoundPage'
 import RouteErrorPage from './RouteErrorPage'
 
@@ -18,14 +12,20 @@ import RouteErrorPage from './RouteErrorPage'
     RequireAuth → everything inside needs a session and a profile
     RequireRole → narrows further by role
   `handle.crumb` feeds the breadcrumbs.
+
+  Pages are code-split with `lazy`: each page's JavaScript is downloaded the first time it's
+  visited, so the initial bundle only contains the shell. The layout shows a progress bar meanwhile.
 */
+const page = (importer) => async () => ({ Component: (await importer()).default })
+
 export const router = createBrowserRouter([
   {
     errorElement: <RouteErrorPage />,
+    hydrateFallbackElement: <FullPageSpinner />,
     children: [
       {
         element: <GuestOnly />,
-        children: [{ path: '/login', element: <LoginPage /> }],
+        children: [{ path: '/login', lazy: page(() => import('@/features/auth/pages/LoginPage')) }],
       },
       {
         element: <RequireAuth />,
@@ -35,17 +35,39 @@ export const router = createBrowserRouter([
             element: <AppLayout />,
             children: [
               { index: true, element: <Navigate to="/dashboard" replace /> },
-              { path: 'dashboard', element: <DashboardPage />, handle: { crumb: 'Dashboard' } },
-              { path: 'students', element: <StudentsPage />, handle: { crumb: 'Students' } },
-              { path: 'schedules', element: <SchedulesPage />, handle: { crumb: 'Schedules' } },
-              { path: 'payments', element: <PaymentsPage />, handle: { crumb: 'Payments' } },
+              {
+                path: 'dashboard',
+                lazy: page(() => import('@/features/dashboard/pages/DashboardPage')),
+                handle: { crumb: 'Dashboard' },
+              },
+              {
+                path: 'students',
+                lazy: page(() => import('@/features/students/pages/StudentsPage')),
+                handle: { crumb: 'Students' },
+              },
+              {
+                path: 'schedules',
+                lazy: page(() => import('@/features/schedules/pages/SchedulesPage')),
+                handle: { crumb: 'Schedules' },
+              },
+              {
+                path: 'payments',
+                lazy: page(() => import('@/features/payments/pages/PaymentsPage')),
+                handle: { crumb: 'Payments' },
+              },
               {
                 element: <RequireRole roles={[ROLES.ADMIN]} />,
-                children: [{ path: 'teachers', element: <TeachersPage />, handle: { crumb: 'Teachers' } }],
+                children: [
+                  {
+                    path: 'teachers',
+                    lazy: page(() => import('@/features/teachers/pages/TeachersPage')),
+                    handle: { crumb: 'Teachers' },
+                  },
+                ],
               },
             ],
           },
-          { path: '/unauthorized', element: <UnauthorizedPage /> },
+          { path: '/unauthorized', lazy: page(() => import('@/features/auth/pages/UnauthorizedPage')) },
         ],
       },
       { path: '*', element: <NotFoundPage /> },

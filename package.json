@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test:db": "node --test supabase/tests/rls.test.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:supabase": "node scripts/check-supabase.mjs",
+    "db:bundle": "node scripts/bundle-migrations.mjs",
+    "check": "npm run lint && npm test && npm run test:db && npm run build"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
