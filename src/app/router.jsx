@@ -54,6 +54,13 @@ export const router = createBrowserRouter([
                   },
                 ],
               },
+              {
+                element: <RequireRole roles={[ROLES.STUDENT]} />,
+                children: [
+                  { path: 'my/classes', lazy: page(() => import('@/features/portal/pages/MyClassesPage')), handle: { crumb: 'My classes' } },
+                  { path: 'my/fees', lazy: page(() => import('@/features/portal/pages/MyFeesPage')), handle: { crumb: 'My fees' } },
+                ],
+              },
             ],
           },
           { path: '/unauthorized', lazy: page(() => import('@/features/auth/pages/UnauthorizedPage')) },
