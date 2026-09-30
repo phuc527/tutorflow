@@ -51,3 +51,8 @@ export function isoToAppZoneInput(value) {
   if (!value) return ''
   return formatInAppZone(value, "yyyy-MM-dd'T'HH:mm")
 }
+
+/** Any date (including a TZDate, whose toISOString keeps its offset) → canonical UTC "…Z" string for the API. */
+export function toUtcISO(value) {
+  return new Date(new Date(value).getTime()).toISOString()
+}
