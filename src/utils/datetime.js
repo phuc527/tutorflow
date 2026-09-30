@@ -56,3 +56,8 @@ export function isoToAppZoneInput(value) {
 export function toUtcISO(value) {
   return new Date(new Date(value).getTime()).toISOString()
 }
+
+/** payments.billing_month ('2026-10-01', a DATE with no time) → '10/2026'. Vietnam has no DST, so +07:00 is fixed. */
+export function formatBillingMonth(billingMonth, pattern = 'MM/yyyy') {
+  return formatInAppZone(`${billingMonth}T00:00:00+07:00`, pattern)
+}

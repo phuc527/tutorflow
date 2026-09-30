@@ -379,6 +379,64 @@ describe('payments', () => {
       await rejects(run(...insertPayment(T1, S(3), '2026-09-15')), '23514')
     }))
 
+  test('generate_monthly_payments bills assigned active students from scheduled hours', () =>
+    tx(async ({ as, q, run }) => {
+      await as(U.t1)
+      // 1.5 h + 1 h with S1 in September (Vietnam time) at 250,000 đ/h = 625,000 đ
+      await run(...schedule(T1, S(1), '2026-09-10T09:00+07', '2026-09-10T10:30+07'))
+      await run(...schedule(T1, S(1), '2026-09-12T09:00+07', '2026-09-12T10:00+07'))
+      // 1 Oct 06:00 Vietnam = 30 Sep 23:00 UTC: must count as October, not September
+      await run(...schedule(T1, S(1), '2026-10-01T06:00+07', '2026-10-01T07:00+07'))
+
+      const [{ created }] = await q(`select public.generate_monthly_payments('2026-09-17') as created`)
+      assert.equal(created, 3) // S1, S3, S5 (all active)
+      const rows = await q(`select student_id, amount::int as amount, status from public.payments order by student_id`)
+      assert.deepEqual(rows.find((r) => r.student_id === S(1)), { student_id: S(1), amount: 625000, status: 'unpaid' })
+      assert.equal(rows.find((r) => r.student_id === S(3)).amount, 0)
+
+      // Idempotent: running again creates nothing new
+      const [{ created: again }] = await q(`select public.generate_monthly_payments('2026-09-01') as created`)
+      assert.equal(again, 0)
+    }))
+
+  test('admin cannot generate payment records', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await rejects(run(`select public.generate_monthly_payments('2026-09-01')`), '42501')
+    }))
+
+  test('dashboard_summary is scoped by RLS: admin sees the centre, a teacher sees their own', () =>
+    tx(async ({ as, q, run }) => {
+      await as(U.t1)
+      const [p] = await q(
+        `insert into public.payments (student_id, teacher_id, billing_month, amount) values ($1, $2, date_trunc('month', now() at time zone 'Asia/Ho_Chi_Minh')::date, 100) returning id`,
+        [S(1), T1],
+      )
+      await run(`update public.payments set status = 'paid' where id = $1`, [p.id])
+      await as(U.t2)
+      await run(
+        `insert into public.payments (student_id, teacher_id, billing_month, amount) values ($1, $2, date_trunc('month', now() at time zone 'Asia/Ho_Chi_Minh')::date, 100)`,
+        [S(2), T2],
+      )
+
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      const [{ s: admin }] = await q(`select public.dashboard_summary() as s`)
+      assert.equal(admin.students, 5) // 6 seeded, 1 inactive
+      assert.equal(admin.teachers, 3)
+      assert.equal(admin.paid_students, 1)
+      assert.equal(admin.unpaid_students, 1)
+      assert.equal(admin.monthly.length, 6)
+
+      await as(U.t1)
+      const [{ s: teacher }] = await q(`select public.dashboard_summary() as s`)
+      assert.equal(teacher.students, 3)
+      assert.equal(teacher.teachers, 1)
+      assert.equal(teacher.paid_students, 1)
+      assert.equal(teacher.unpaid_students, 0) // T2's unpaid record is invisible to T1
+    }))
+
   test('nobody can delete payments or write payment history through the API', () =>
     tx(async ({ as, q, run }) => {
       await as(U.t1)

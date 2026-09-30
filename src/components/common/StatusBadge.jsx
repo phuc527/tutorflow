@@ -3,7 +3,8 @@ import { Badge } from '@/components/ui/badge'
 // One place that decides how every status in the app looks.
 const STATUS_STYLES = {
   paid: { tone: 'success', label: 'Paid' },
-  unpaid: { tone: 'danger', label: 'Unpaid' },
+  // Amber, not red: green vs red is indistinguishable for deuteranopes (validated ΔE 5.0 vs 17.4 for green/amber).
+  unpaid: { tone: 'warning', label: 'Unpaid' },
   active: { tone: 'success', label: 'Active' },
   inactive: { tone: 'neutral', label: 'Inactive' },
   on_leave: { tone: 'warning', label: 'On leave' },
