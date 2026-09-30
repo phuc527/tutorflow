@@ -26,7 +26,10 @@ export const schedulesService = {
     return unwrap(await query)
   },
 
-  /** teacher_id is the caller's own teacher id; RLS rejects anything else. created_by is set by the database. */
+  /**
+   * A teacher passes their own teacher id; the admin passes the chosen one. RLS requires the student to
+   * be assigned to that teacher. created_by is set by the database.
+   */
   async create(teacherId, values) {
     return unwrap(
       await supabase
@@ -37,7 +40,8 @@ export const schedulesService = {
     )
   },
 
-  async update(id, values) {
+  /** teacher_id is fixed after creation (not an updatable column). */
+  async update(id, { teacher_id: _teacherId, ...values }) {
     return unwrap(await supabase.from('schedules').update(emptyToNull(values)).eq('id', id).select(COLUMNS).single())
   },
 

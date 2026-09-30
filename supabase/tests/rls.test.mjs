@@ -240,11 +240,46 @@ describe('admin management', () => {
 
 // =============================================================================
 describe('schedules', () => {
-  test('admin cannot create a schedule', () =>
+  test('admin creates a schedule for any teacher, for a student assigned to that teacher', () =>
+    tx(async ({ as, q, run }) => {
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      const [a] = await q(...schedule(T1, S(3), '2026-10-01T09:00+07', '2026-10-01T10:00+07'))
+      const [b] = await q(...schedule(T2, S(2), '2026-10-01T09:00+07', '2026-10-01T10:00+07'))
+      assert.equal(a.created_by, U.admin)
+      assert.equal(b.teacher_id, T2)
+    }))
+
+  test('admin cannot schedule a student who is not assigned to the teacher, or an inactive teacher', () =>
     tx(async ({ as, run }) => {
       await promoteAdmin(as, run)
       await as(U.admin)
-      await rejects(run(...schedule(T1, S(1), '2026-10-01T09:00+07', '2026-10-01T10:00+07')), '42501')
+      await rejects(run(...schedule(T1, S(2), '2026-10-01T09:00+07', '2026-10-01T10:00+07')), '42501')
+      await run(`update public.teachers set status = 'inactive' where id = $1`, [T2])
+      await rejects(run(...schedule(T2, S(2), '2026-10-01T09:00+07', '2026-10-01T10:00+07')), '42501')
+    }))
+
+  test('admin edits and deletes any teacher’s schedule, but cannot move it to an unassigned student', () =>
+    tx(async ({ as, q, run }) => {
+      await as(U.t2)
+      const [row] = await q(...schedule(T2, S(2), '2026-10-01T09:00+07', '2026-10-01T10:00+07'))
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await rejects(run(`update public.schedules set student_id = $1 where id = $2`, [S(3), row.id]), '42501')
+      assert.equal((await run(`update public.schedules set title = 'Moved' where id = $1`, [row.id])).affectedRows, 1)
+      assert.equal((await run(`delete from public.schedules where id = $1`, [row.id])).affectedRows, 1)
+    }))
+
+  test('admin schedules still respect overlaps', () =>
+    tx(async ({ as, run }) => {
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await run(...schedule(T1, S(1), '2026-10-01T09:00+07', '2026-10-01T10:00+07'))
+      await rejects(
+        run(...schedule(T1, S(3), '2026-10-01T09:30+07', '2026-10-01T10:30+07')),
+        '23P01',
+        'schedules_no_teacher_overlap',
+      )
     }))
 
   test('teacher creates a schedule for an assigned student; created_by is set by the server', () =>

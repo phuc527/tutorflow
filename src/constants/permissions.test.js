@@ -4,11 +4,11 @@ import { hasPermission, PERMISSIONS } from './permissions'
 
 // These mirror the RLS access matrix. If a UI rule drifts from the database rule, these fail.
 describe('UI permissions mirror the database rules', () => {
-  test('admin manages people but never schedules or payments', () => {
+  test('admin manages people and schedules but never payments', () => {
     expect(hasPermission('admin', PERMISSIONS.MANAGE_TEACHERS)).toBe(true)
     expect(hasPermission('admin', PERMISSIONS.MANAGE_STUDENTS)).toBe(true)
     expect(hasPermission('admin', PERMISSIONS.ASSIGN_STUDENTS)).toBe(true)
-    expect(hasPermission('admin', PERMISSIONS.MANAGE_SCHEDULES)).toBe(false)
+    expect(hasPermission('admin', PERMISSIONS.MANAGE_SCHEDULES)).toBe(true)
     expect(hasPermission('admin', PERMISSIONS.MARK_PAYMENTS)).toBe(false)
   })
 

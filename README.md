@@ -19,7 +19,7 @@ database itself enforces who may see and change what.
 | Dashboard | Centre-wide stats, 6-month payment chart, upcoming classes | Same page, scoped to their own students and classes | — |
 | Teachers | Create / edit / delete, search, status filter, pagination, "login linked" indicator | — | — |
 | Students | Create / edit / delete, assign teachers, filter by teacher / grade / status, this month's payment status | Read-only list of their assigned students | — |
-| Schedules | Month / week / day / list calendar of all classes, read-only | Create / edit / delete their own classes for assigned students; overlaps rejected | **My classes**: their own classes by month, read-only |
+| Schedules | Month / week / day / list calendar of all classes; create / edit / delete any teacher's class for a student assigned to that teacher | Create / edit / delete their own classes for assigned students; overlaps rejected | **My classes**: their own classes by month, read-only |
 | Payments | View all records, totals and history, read-only | Create monthly records in one click, mark paid/unpaid with confirmation, edit amount/notes, view history | **My fees**: their own monthly fees, read-only |
 | Users | Switch accounts between student and teacher, link/unlink students | — | — |
 
@@ -85,7 +85,7 @@ RBAC is enforced twice:
 | teachers | full CRUD | read own record |
 | students | full CRUD | read assigned students |
 | teacher_students | read, assign, unassign | read own assignments |
-| schedules | read all, **no writes** | CRUD own, assigned students only |
+| schedules | CRUD any, student must be assigned to the teacher | CRUD own, assigned students only |
 | payments | read all, **no writes** | read own; create/update for assigned students; **no deletes** |
 | payment_history | read all | read history of own payments; nobody can write it directly |
 | student_accounts | read all; link/unlink via functions | — |

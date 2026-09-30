@@ -27,6 +27,12 @@ export const teachersService = {
     return unwrap(await supabase.from('teachers').select('id, full_name, status').order('full_name'))
   },
 
+  /** Ids of the students assigned to a teacher. */
+  async getStudentIds(teacherId) {
+    const rows = unwrap(await supabase.from('teacher_students').select('student_id').eq('teacher_id', teacherId))
+    return rows.map((row) => row.student_id)
+  },
+
   async create(values) {
     return unwrap(await supabase.from('teachers').insert(emptyToNull(values)).select().single())
   },
