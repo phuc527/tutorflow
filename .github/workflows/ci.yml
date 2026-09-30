@@ -1,0 +1,45 @@
+# Same gates as `npm run check`, as separate steps so a failure names what broke.
+# Deployment is not done here: Vercel's Git integration builds previews for PRs and deploys main.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # RLS and migration tests against an in-process Postgres (PGlite); no Supabase project needed.
+      - name: Database tests
+        run: npm run test:db
+
+      - name: Build
+        run: npm run build
