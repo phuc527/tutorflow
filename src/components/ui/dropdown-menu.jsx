@@ -36,3 +36,24 @@ export function DropdownMenuLabel({ className, ...props }) {
 export function DropdownMenuSeparator({ className, ...props }) {
   return <DropdownPrimitive.Separator className={cn('-mx-1 my-1 h-px bg-border', className)} {...props} />
 }
+
+export const DropdownMenuRadioGroup = DropdownPrimitive.RadioGroup
+
+export function DropdownMenuRadioItem({ className, children, ...props }) {
+  return (
+    <DropdownPrimitive.RadioItem
+      className={cn(
+        'relative flex cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[highlighted]:bg-muted [&_svg]:size-4',
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute left-2 flex size-4 items-center justify-center">
+        <DropdownPrimitive.ItemIndicator>
+          <span className="block size-2 rounded-full bg-primary" />
+        </DropdownPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownPrimitive.RadioItem>
+  )
+}

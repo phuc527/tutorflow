@@ -46,6 +46,11 @@ export const authService = {
     return () => data.subscription.unsubscribe()
   },
 
+  /** Save the user's colour theme ('light' | 'dark' | 'system'). RLS: only their own profile. */
+  async updateTheme(userId, theme) {
+    return unwrap(await supabase.from('profiles').update({ theme }).eq('id', userId).select('theme').single())
+  },
+
   /**
    * The signed-in user's profile, read from the database (RLS: users can read their own row).
    * The role comes from here, never from anything the browser could edit.
@@ -56,7 +61,7 @@ export const authService = {
       await supabase
         .from('profiles')
         // `!teachers_profile_id_fkey` names the FK to follow, so the embed can't become ambiguous later.
-        .select('id, email, full_name, role, phone, avatar_url, teacher:teachers!teachers_profile_id_fkey(id, full_name, status)')
+        .select('id, email, full_name, role, phone, avatar_url, theme, teacher:teachers!teachers_profile_id_fkey(id, full_name, status)')
         .eq('id', userId)
         .single(),
     )

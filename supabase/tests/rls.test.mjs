@@ -592,3 +592,31 @@ describe('sign-up allowlist', () => {
       await rejects(run(...signUp('teacher3@example.com')), '42501')
     }))
 })
+
+// =============================================================================
+describe('profile theme', () => {
+  test('new profiles default to the system theme', () =>
+    tx(async ({ q }) => {
+      const [p] = await q(`select theme from public.profiles where id = $1`, [U.t1])
+      assert.equal(p.theme, 'system')
+    }))
+
+  test('a user can save their own theme', () =>
+    tx(async ({ as, q }) => {
+      await as(U.t1)
+      const rows = await q(`update public.profiles set theme = 'dark' where id = $1 returning theme`, [U.t1])
+      assert.deepEqual(rows, [{ theme: 'dark' }])
+    }))
+
+  test('a user cannot change someone else’s theme', () =>
+    tx(async ({ as, q }) => {
+      await as(U.t1)
+      assert.equal((await q(`update public.profiles set theme = 'dark' where id = $1 returning id`, [U.t2])).length, 0)
+    }))
+
+  test('only light, dark or system are accepted', () =>
+    tx(async ({ as, run }) => {
+      await as(U.t1)
+      await rejects(run(`update public.profiles set theme = 'purple' where id = $1`, [U.t1]), '23514')
+    }))
+})
