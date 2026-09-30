@@ -54,7 +54,8 @@ export function useSchedulesInRange({ view, date, teacherId, studentId }) {
 
 export function useSaveSchedule({ teacherId, onSuccess } = {}) {
   return useAppMutation({
-    mutationFn: ({ id, values }) => (id ? schedulesService.update(id, values) : schedulesService.create(teacherId, values)),
+    mutationFn: ({ id, values }) =>
+      id ? schedulesService.update(id, values) : schedulesService.create(teacherId || values.teacher_id, values),
     invalidate: [queryKeys.schedules.all],
     successMessage: (_data, { id }) => (id ? 'Schedule updated' : 'Schedule created'),
     onSuccess,

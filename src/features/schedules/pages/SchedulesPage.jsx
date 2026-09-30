@@ -26,8 +26,9 @@ export default function SchedulesPage() {
   const hasPermission = usePermission(PERMISSIONS.MANAGE_SCHEDULES)
   const isAdminView = usePermission(PERMISSIONS.VIEW_TEACHERS)
   // A teacher login must be linked to an active teacher record to create classes (RLS requires the same).
+  // The admin manages every teacher's classes and picks the teacher in the form.
   const teacherInactive = profile?.teacher?.status === 'inactive'
-  const canManage = hasPermission && Boolean(teacherId) && !teacherInactive
+  const canManage = hasPermission && (isAdminView || (Boolean(teacherId) && !teacherInactive))
 
   const { params, setParams } = useCalendarParams()
   const schedulesQuery = useSchedulesInRange(params)
@@ -77,7 +78,7 @@ export default function SchedulesPage() {
     <>
       <PageHeader
         title="Schedules"
-        description={isAdminView ? 'All classes across teachers (read-only).' : 'Your classes. Times shown in Vietnam time (GMT+7).'}
+        description={isAdminView ? 'All classes across teachers. Times shown in Vietnam time (GMT+7).' : 'Your classes. Times shown in Vietnam time (GMT+7).'}
         actions={
           canManage && (
             <Button onClick={() => openCreate(params.view === 'day' ? params.date : todayKey(), '')}>
@@ -140,7 +141,8 @@ export default function SchedulesPage() {
             onOpenChange={(open) => !open && close()}
             schedule={dialog?.mode === 'edit' ? dialog.schedule : null}
             initial={dialog?.mode === 'create' ? dialog.initial : null}
-            teacherId={teacherId}
+            teacherId={isAdminView ? null : teacherId}
+            chooseTeacher={isAdminView}
           />
           <ConfirmDialog
             open={dialog?.mode === 'delete'}

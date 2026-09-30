@@ -9,24 +9,34 @@ const time = z.string().regex(/^\d{2}:\d{2}$/, 'Choose a time')
  * Classes end on the day they start; 'HH:mm' strings compare correctly as text.
  * The database re-checks end > start, the 12-hour cap and overlaps.
  */
-export const scheduleSchema = z
-  .object({
-    student_id: z.string().uuid('Choose a student'),
-    title: z.string().trim().min(1, 'Title is required').max(120),
-    subject: z.string().trim().min(1, 'Subject is required').max(80),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a date'),
-    start: time,
-    end: time,
-    location: z.string().trim().max(120),
-    notes: z.string().trim().max(2000),
-  })
-  .refine((v) => v.end > v.start, { path: ['end'], message: 'End time must be later than start time' })
-  .refine((v) => v.end <= v.start || minutes(v.end) - minutes(v.start) <= 12 * 60, {
-    path: ['end'],
-    message: 'A class cannot be longer than 12 hours',
-  })
+const scheduleFields = z.object({
+  student_id: z.string().uuid('Choose a student'),
+  title: z.string().trim().min(1, 'Title is required').max(120),
+  subject: z.string().trim().min(1, 'Subject is required').max(80),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a date'),
+  start: time,
+  end: time,
+  location: z.string().trim().max(120),
+  notes: z.string().trim().max(2000),
+})
+
+const withTimeRules = (schema) =>
+  schema
+    .refine((v) => v.end > v.start, { path: ['end'], message: 'End time must be later than start time' })
+    .refine((v) => v.end <= v.start || minutes(v.end) - minutes(v.start) <= 12 * 60, {
+      path: ['end'],
+      message: 'A class cannot be longer than 12 hours',
+    })
+
+export const scheduleSchema = withTimeRules(scheduleFields)
+
+/** The admin also picks the teacher (a teacher always schedules for themselves). */
+export const adminScheduleSchema = withTimeRules(
+  scheduleFields.extend({ teacher_id: z.string().uuid('Choose a teacher') }),
+)
 
 export const scheduleDefaults = {
+  teacher_id: '',
   student_id: '',
   title: '',
   subject: '',
@@ -49,6 +59,7 @@ export function formToSchedule({ date, start, end, ...rest }) {
 /** Schedule row → form values. */
 export function scheduleToForm(schedule) {
   return {
+    teacher_id: schedule.teacher_id,
     student_id: schedule.student_id,
     title: schedule.title,
     subject: schedule.subject,

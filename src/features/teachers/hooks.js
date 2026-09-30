@@ -21,6 +21,14 @@ export function useTeacherOptions({ enabled = true } = {}) {
   })
 }
 
+export function useTeacherStudentIds(teacherId, { enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.teachers.students(teacherId),
+    queryFn: () => teachersService.getStudentIds(teacherId),
+    enabled: enabled && Boolean(teacherId),
+  })
+}
+
 /** Create when `id` is absent, update otherwise. */
 export function useSaveTeacher({ onSuccess } = {}) {
   return useAppMutation({

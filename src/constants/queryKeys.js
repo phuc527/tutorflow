@@ -7,6 +7,7 @@ export const queryKeys = {
     all: ['teachers'],
     list: (params) => ['teachers', 'list', params],
     options: () => ['teachers', 'options'],
+    students: (teacherId) => ['teachers', 'students', teacherId],
   },
   students: {
     all: ['students'],
