@@ -12,6 +12,8 @@ export const PERMISSIONS = Object.freeze({
   ASSIGN_STUDENTS: 'students:assign',
   MANAGE_SCHEDULES: 'schedules:manage',
   MARK_PAYMENTS: 'payments:mark',
+  MANAGE_USERS: 'users:manage',
+  VIEW_OWN_RECORDS: 'own:view',
 })
 
 const ROLE_PERMISSIONS = {
@@ -20,8 +22,10 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.MANAGE_TEACHERS,
     PERMISSIONS.MANAGE_STUDENTS,
     PERMISSIONS.ASSIGN_STUDENTS,
+    PERMISSIONS.MANAGE_USERS,
   ],
   [ROLES.TEACHER]: [PERMISSIONS.MANAGE_SCHEDULES, PERMISSIONS.MARK_PAYMENTS],
+  [ROLES.STUDENT]: [PERMISSIONS.VIEW_OWN_RECORDS],
 }
 
 export function hasPermission(role, permission) {

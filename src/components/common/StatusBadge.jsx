@@ -10,6 +10,7 @@ const STATUS_STYLES = {
   on_leave: { tone: 'warning', label: 'On leave' },
   admin: { tone: 'primary', label: 'Admin' },
   teacher: { tone: 'neutral', label: 'Teacher' },
+  student: { tone: 'neutral', label: 'Student' },
 }
 
 export function StatusBadge({ status, className }) {

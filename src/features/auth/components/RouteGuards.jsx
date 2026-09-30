@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { ErrorState, FullPageSpinner } from '@/components/common/States'
+import { homePathForRole } from '@/constants/navigation'
 import { useAuth } from '../authContext'
 
 /**
@@ -43,6 +44,12 @@ export function RequireRole({ roles }) {
   return <Outlet />
 }
 
+/** Index route: each role starts on its own home page. */
+export function HomeRedirect() {
+  const { role } = useAuth()
+  return <Navigate to={homePathForRole(role)} replace />
+}
+
 /** For /login and /signup: already-authenticated users are bounced to the app. */
 export function GuestOnly() {
   const { session, isLoading } = useAuth()
@@ -50,6 +57,6 @@ export function GuestOnly() {
   if (isLoading) return <FullPageSpinner />
   // Return to the page (including its filters in the query string) the user originally asked for.
   const from = location.state?.from
-  if (session) return <Navigate to={from ? `${from.pathname}${from.search ?? ''}` : '/dashboard'} replace />
+  if (session) return <Navigate to={from ? `${from.pathname}${from.search ?? ''}` : '/'} replace />
   return <Outlet />
 }

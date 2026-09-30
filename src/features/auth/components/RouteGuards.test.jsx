@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { AuthContext } from '../authContext'
-import { GuestOnly, RequireAuth, RequireRole } from './RouteGuards'
+import { GuestOnly, HomeRedirect, RequireAuth, RequireRole } from './RouteGuards'
 
 /*
   [TEST-1] Route guards: the UX layer of RBAC. (The database layer is tested in supabase/tests.)
@@ -32,6 +32,8 @@ function renderAt(path, auth) {
       {
         element: <RequireAuth />,
         children: [
+          { path: '/', element: <HomeRedirect /> },
+          { path: '/my/classes', element: <p>my classes page</p> },
           { path: '/dashboard', element: <p>dashboard page</p> },
           { path: '/payments', element: <p>payments page</p> },
           { element: <RequireRole roles={['admin']} />, children: [{ path: '/teachers', element: <p>teachers page</p> }] },
@@ -50,6 +52,19 @@ function renderAt(path, auth) {
 }
 
 describe('route guards', () => {
+  test('the home page sends a student to their classes and staff to the dashboard', async () => {
+    renderAt('/', { session, profile: { ...teacher, role: 'student' } })
+    expect(await screen.findByText('my classes page')).toBeTruthy()
+    cleanup()
+    renderAt('/', { session, profile: admin })
+    expect(await screen.findByText('dashboard page')).toBeTruthy()
+  })
+
+  test('a student opening a staff page is sent to /unauthorized', async () => {
+    renderAt('/teachers', { session, profile: { ...teacher, role: 'student' } })
+    expect(await screen.findByText('unauthorized page')).toBeTruthy()
+  })
+
   test('logged-out visitor is sent to /login (scenario 13)', async () => {
     renderAt('/payments', {})
     expect(await screen.findByText('login page')).toBeTruthy()
