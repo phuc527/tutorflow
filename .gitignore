@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+supabase/.temp
+supabase/.branches
+# Unrelated tooling clone that lives in this folder
+karpathy-claude-skills/

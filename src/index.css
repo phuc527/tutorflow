@@ -1,0 +1,47 @@
+@import 'tailwindcss';
+
+/*
+  Design tokens. Tailwind v4 reads @theme and generates utilities from it,
+  e.g. --color-primary → bg-primary / text-primary, --radius-lg → rounded-lg.
+  Components reference these semantic names, never raw palette colors,
+  so the look can change in one place.
+*/
+@theme {
+  --font-sans: ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --color-background: #f6f7f9;
+  --color-foreground: #111827;
+  --color-card: #ffffff;
+  --color-muted: #f1f3f6;
+  --color-muted-foreground: #6b7280;
+  --color-border: #e5e7eb;
+  --color-input: #d1d5db;
+  --color-ring: #2563eb;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-foreground: #ffffff;
+  --color-primary-soft: #eff4ff;
+
+  --color-success: #15803d;
+  --color-success-soft: #ecfdf3;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-danger-soft: #fef2f2;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+@layer base {
+  html { color-scheme: light; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  * { @apply border-border; }
+  :focus-visible { @apply outline-2 outline-offset-2 outline-ring; }
+}
