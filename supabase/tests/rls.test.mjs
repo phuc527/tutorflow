@@ -790,3 +790,72 @@ describe('role management', () => {
       await rejects(run(`select public.unlink_student_account($1, $2)`, [NEWBIE, S(5)]), '42501')
     }))
 })
+
+// =============================================================================
+describe('student portal functions', () => {
+  const STU = 'ffffffff-0000-4000-8000-000000000001'
+  async function studentWithData({ as, run }) {
+    await as(SUPER)
+    await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'lan.vo@example.com', now())`, [STU])
+    // T2 teaches S2 (lan.vo) and S4. One class and one payment each.
+    await run(...schedule(T2, S(2), '2026-10-05T02:00:00Z', '2026-10-05T03:00:00Z'))
+    await run(...schedule(T2, S(4), '2026-10-05T04:00:00Z', '2026-10-05T05:00:00Z'))
+    await run(`insert into public.payments (student_id, teacher_id, billing_month, amount) values ($1, $2, '2026-10-01', 500000), ($3, $2, '2026-10-01', 700000)`, [S(2), T2, S(4)])
+  }
+
+  test('a student sees only their own classes, with the teacher name but no teacher details', () =>
+    tx(async (ctx) => {
+      await studentWithData(ctx)
+      await ctx.as(STU)
+      const rows = await ctx.q(`select * from public.my_schedule('2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z')`)
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0].student_id, S(2))
+      assert.equal(rows[0].teacher_name, 'Trần Thị Bình')
+      assert.deepEqual(Object.keys(rows[0]).sort(), ['end_time', 'id', 'location', 'start_time', 'student_id', 'student_name', 'subject', 'teacher_name', 'title'])
+    }))
+
+  test('a student sees only their own fees and students', () =>
+    tx(async (ctx) => {
+      await studentWithData(ctx)
+      await ctx.as(STU)
+      const fees = await ctx.q(`select * from public.my_payments()`)
+      assert.deepEqual(fees.map((f) => [f.student_id, Number(f.amount), f.status]), [[S(2), 500000, 'unpaid']])
+      assert.deepEqual((await ctx.q(`select id from public.my_students()`)).map((r) => r.id), [S(2)])
+    }))
+
+  test('teachers and admins get nothing from the student functions', () =>
+    tx(async (ctx) => {
+      await studentWithData(ctx)
+      await promoteAdmin(ctx.as, ctx.run)
+      for (const who of [U.t2, U.admin]) {
+        await ctx.as(who)
+        assert.equal((await ctx.q(`select * from public.my_schedule('2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z')`)).length, 0)
+        assert.equal((await ctx.q(`select * from public.my_payments()`)).length, 0)
+        assert.equal((await ctx.q(`select * from public.my_students()`)).length, 0)
+      }
+    }))
+
+  test('a student with no links gets empty results, not an error', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'orphan@example.com', now())`, [STU])
+      await as(STU)
+      assert.equal((await q(`select * from public.my_students()`)).length, 0)
+      assert.equal((await q(`select * from public.my_payments()`)).length, 0)
+    }))
+
+  test('my_schedule rejects empty, reversed or over-long ranges', () =>
+    tx(async (ctx) => {
+      await studentWithData(ctx)
+      await ctx.as(STU)
+      await rejects(ctx.run(`select * from public.my_schedule('2026-10-02T00:00:00Z', '2026-10-01T00:00:00Z')`), '22023')
+      await rejects(ctx.run(`select * from public.my_schedule('2026-01-01T00:00:00Z', '2026-06-01T00:00:00Z')`), '22023')
+      await rejects(ctx.run(`select * from public.my_schedule(null, '2026-06-01T00:00:00Z')`), '22023')
+    }))
+
+  test('anonymous visitors cannot call the student functions', () =>
+    tx(async ({ as, run }) => {
+      await as(null)
+      await rejects(run(`select * from public.my_payments()`), '42501')
+    }))
+})
