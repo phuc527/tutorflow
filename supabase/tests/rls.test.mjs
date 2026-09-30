@@ -38,11 +38,11 @@ before(async () => {
   await db.exec(await readFile(path.join(root, 'seed.sql'), 'utf8'))
 
   // Simulate sign-ups. The admin tries to self-promote through metadata; it must be ignored.
-  await db.query(`insert into auth.users (id, email, raw_user_meta_data) values
-    ($1, 'owner@example.com', '{"role":"admin","full_name":"Owner"}'),
-    ($2, 'TEACHER1@example.com', '{}'),
-    ($3, 'teacher2@example.com', '{}'),
-    ($4, 'stray@example.com', '{}')`, [U.admin, U.t1, U.t2, U.stray])
+  await db.query(`insert into auth.users (id, email, raw_user_meta_data, email_confirmed_at) values
+    ($1, 'owner@example.com', '{"role":"admin","full_name":"Owner"}', now()),
+    ($2, 'TEACHER1@example.com', '{}', now()),
+    ($3, 'teacher2@example.com', '{}', now()),
+    ($4, 'stray@example.com', '{}', now())`, [U.admin, U.t1, U.t2, U.stray])
 })
 
 /** Run `fn` in a transaction that is always rolled back. `as(uid|null)` switches the acting user. */
@@ -462,5 +462,102 @@ describe('payments', () => {
         run(`insert into public.payment_history (payment_id, new_status) values ($1, 'paid')`, [p.id]),
         '42501',
       )
+    }))
+})
+
+// =============================================================================
+// Production-readiness review: regression tests, one per finding (IDs match the review report).
+// =============================================================================
+describe('review findings', () => {
+  const T3 = '11111111-1111-4111-8111-000000000003' // seeded, on_leave, no login yet
+  const ATTACKER = 'bbbbbbbb-0000-4000-8000-000000000001'
+  const payment = (teacher, student, extra = '') => [
+    `insert into public.payments (student_id, teacher_id, billing_month, amount ${extra ? ', schedule_id' : ''})
+     values ($1, $2, '2026-09-01', 1000000 ${extra ? ', $3' : ''}) returning *`,
+    extra ? [student, teacher, extra] : [student, teacher],
+  ]
+
+  test('[SEC-1] an UNCONFIRMED sign-up with a teacher’s email is not linked and gets no access', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email) values ($1, 'teacher3@example.com')`, [ATTACKER])
+      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T3]))[0].profile_id, null)
+      await as(ATTACKER)
+      assert.equal((await q(`select id from public.students`)).length, 0)
+      // …and learns nothing about the teacher record (name is not copied before confirmation)
+      assert.equal((await q(`select full_name from public.profiles where id = $1`, [ATTACKER]))[0].full_name, 'teacher3')
+
+      // Linking happens only once the email is confirmed (i.e. the owner proved they control it).
+      await as(SUPER)
+      await run(`update auth.users set email_confirmed_at = now() where id = $1`, [ATTACKER])
+      assert.equal((await q(`select profile_id from public.teachers where id = $1`, [T3]))[0].profile_id, ATTACKER)
+    }))
+
+  test('[SEC-1] a teacher record created later is not linked to an unconfirmed login', () =>
+    tx(async ({ as, q, run }) => {
+      await as(SUPER)
+      await run(`insert into auth.users (id, email) values ($1, 'late@example.com')`, [ATTACKER])
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      const [t] = await q(`insert into public.teachers (full_name, email) values ('Late', 'late@example.com') returning profile_id`)
+      assert.equal(t.profile_id, null)
+    }))
+
+  test('[SEC-2] admin cannot delete schedules indirectly by deleting a student or teacher', () =>
+    tx(async ({ as, run }) => {
+      await as(U.t1)
+      await run(...schedule(T1, S(3), '2026-10-01T09:00+07', '2026-10-01T10:00+07'))
+      await promoteAdmin(as, run)
+      await as(U.admin)
+      await rejects(run(`delete from public.students where id = $1`, [S(3)]), '23001')
+      await rejects(run(`delete from public.teachers where id = $1`, [T1]), '23001')
+    }))
+
+  test('[SEC-3] a payment can only reference a schedule of the same teacher and student', () =>
+    tx(async ({ as, q, run }) => {
+      await as(U.t2)
+      const [foreign] = await q(...schedule(T2, S(2), '2026-09-05T09:00+07', '2026-09-05T10:00+07'))
+      await as(U.t1)
+      const [ownOther] = await q(...schedule(T1, S(3), '2026-09-06T09:00+07', '2026-09-06T10:00+07'))
+      const [own] = await q(...schedule(T1, S(1), '2026-09-07T09:00+07', '2026-09-07T10:00+07'))
+      await rejects(run(...payment(T1, S(1), foreign.id)), '23514')
+      await rejects(run(...payment(T1, S(1), ownOther.id)), '23514')
+      await run(...payment(T1, S(1), own.id))
+    }))
+
+  test('[PAY-1] amount is locked while paid, and history records the amount', () =>
+    tx(async ({ as, q, run }) => {
+      await as(U.t1)
+      const [p] = await q(...payment(T1, S(1)))
+      await run(`update public.payments set status = 'paid' where id = $1`, [p.id])
+      await rejects(run(`update public.payments set amount = 0 where id = $1`, [p.id]), '23514')
+      await run(`update public.payments set notes = 'cash' where id = $1`, [p.id]) // other edits still fine
+      await run(`update public.payments set status = 'unpaid' where id = $1`, [p.id])
+      await run(`update public.payments set amount = 900000 where id = $1`, [p.id])
+      const history = await q(`select new_status, amount::int as amount from public.payment_history where payment_id = $1 order by id`, [p.id])
+      assert.deepEqual(history.map((h) => [h.new_status, h.amount]), [
+        ['unpaid', 1000000],
+        ['paid', 1000000],
+        ['unpaid', 1000000],
+      ])
+    }))
+
+  test('[SCH-1] moving an existing class onto another class is rejected (update path)', () =>
+    tx(async ({ as, q, run }) => {
+      await as(U.t1)
+      await run(...schedule(T1, S(1), '2026-10-01T09:00+07', '2026-10-01T10:00+07'))
+      const [later] = await q(...schedule(T1, S(3), '2026-10-01T11:00+07', '2026-10-01T12:00+07'))
+      await rejects(
+        run(`update public.schedules set start_time = '2026-10-01T09:30+07', end_time = '2026-10-01T10:30+07' where id = $1`, [later.id]),
+        '23P01',
+        'schedules_no_teacher_overlap',
+      )
+    }))
+
+  test('[SEC-4] avatar_url must be an https URL', () =>
+    tx(async ({ as, run }) => {
+      await as(U.t1)
+      await rejects(run(`update public.profiles set avatar_url = 'javascript:alert(1)' where id = $1`, [U.t1]), '23514')
+      await run(`update public.profiles set avatar_url = 'https://example.com/a.png' where id = $1`, [U.t1])
     }))
 })

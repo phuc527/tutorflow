@@ -13,11 +13,17 @@ export const teacherSchema = z.object({
   email: z.string().trim().min(1, 'Email is required').email('Enter a valid email address'),
   phone: optionalPhone,
   specialization: z.string().trim().max(120),
-  hourly_rate: z.coerce
-    .number({ invalid_type_error: 'Enter a number' })
-    .int('Use whole đồng')
-    .min(0, 'Cannot be negative')
-    .max(100_000_000, 'That rate looks too high'),
+  // Blank is an error rather than silently becoming 0.
+  hourly_rate: z
+    .union([z.string(), z.number()])
+    .refine((v) => String(v).trim() !== '', 'Hourly rate is required (use 0 if not applicable)')
+    .pipe(
+      z.coerce
+        .number({ invalid_type_error: 'Enter a number' })
+        .int('Use whole đồng')
+        .min(0, 'Cannot be negative')
+        .max(100_000_000, 'That rate looks too high'),
+    ),
   status: z.enum(['active', 'on_leave', 'inactive']),
 })
 

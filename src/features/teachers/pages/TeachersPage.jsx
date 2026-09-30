@@ -118,7 +118,7 @@ export default function TeachersPage() {
         title="Delete teacher?"
         description={
           dialog?.mode === 'delete'
-            ? `${dialog.teacher.full_name} will be removed along with their student assignments and schedules. Teachers with payment records can't be deleted; set them to Inactive instead.`
+            ? `${dialog.teacher.full_name} and their student assignments will be removed. Teachers who have classes or payment records can't be deleted; set them to Inactive instead.`
             : ''
         }
         confirmLabel="Delete"

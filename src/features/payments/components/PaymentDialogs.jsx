@@ -9,6 +9,8 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input, Textarea } from '@/components/ui/input'
 import { paymentDetailsSchema } from '@/schemas/payment'
+import { STALE_WRITE } from '@/services/errors'
+import { formatCurrency } from '@/utils/format'
 import { formatDateTime } from '@/utils/datetime'
 import { usePaymentHistory, useUpdatePaymentDetails } from '../hooks'
 
@@ -17,6 +19,7 @@ const FORM_ID = 'payment-details-form'
 /** Teacher: adjust the amount or add a note. Status changes go through the confirm toggle instead. */
 export function PaymentDetailsModal({ payment, onOpenChange }) {
   const save = useUpdatePaymentDetails({ onSuccess: () => onOpenChange(false) })
+  const isPaid = payment?.status === 'paid'
   const {
     register,
     handleSubmit,
@@ -41,10 +44,27 @@ export function PaymentDetailsModal({ payment, onOpenChange }) {
         id={FORM_ID}
         noValidate
         className="grid gap-4"
-        onSubmit={handleSubmit((values) => save.mutate({ id: payment.id, values }))}
+        onSubmit={handleSubmit((values) =>
+          save.mutate({ payment, values }, { onError: (e) => e.code === STALE_WRITE && onOpenChange(false) }),
+        )}
       >
-        <FormField label="Amount (VND)" htmlFor="amount" error={errors.amount} required>
-          <Input id="amount" type="number" min={0} step={1000} inputMode="numeric" aria-invalid={Boolean(errors.amount)} {...register('amount')} />
+        <FormField
+          label="Amount (VND)"
+          htmlFor="amount"
+          error={errors.amount}
+          required
+          hint={isPaid ? 'Locked while the record is paid. Mark it unpaid to change the amount.' : undefined}
+        >
+          <Input
+            id="amount"
+            type="number"
+            min={0}
+            step={1000}
+            inputMode="numeric"
+            readOnly={isPaid}
+            aria-invalid={Boolean(errors.amount)}
+            {...register('amount')}
+          />
         </FormField>
         <FormField label="Notes" htmlFor="notes" error={errors.notes} hint="e.g. paid in cash to the front desk">
           <Textarea id="notes" rows={3} {...register('notes')} />
@@ -89,6 +109,7 @@ export function PaymentHistoryDialog({ payment, onOpenChange }) {
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {formatDateTime(entry.changed_at)} · by {entry.changer?.full_name ?? 'unknown'}
+                  {entry.amount !== null && ` · ${formatCurrency(entry.amount)}`}
                 </p>
               </li>
             ))}

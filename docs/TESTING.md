@@ -5,8 +5,8 @@ hiding a button in React protects nothing: anyone can call the Supabase API dire
 
 | Level | Command | What it covers |
 |---|---|---|
-| Database / RLS | `npm run test:db` | Runs the real migrations in an in-process Postgres (PGlite) and acts as anon, admin and two teachers exactly like Supabase does. 34 tests. |
-| Unit | `npm test` | Timezone maths (run under `America/New_York` to catch local-timezone leaks), form schemas, error translation, the UI permission map. |
+| Database / RLS | `npm run test:db` | Runs the real migrations in an in-process Postgres (PGlite) and acts as anon, admin and two teachers exactly like Supabase does. 41 tests, including one regression test per production-review finding (`review findings`). |
+| Unit + component | `npm test` | Timezone maths (run under `America/New_York` to catch local-timezone leaks), form schemas, error translation, the UI permission map, route guards (React Testing Library), the build-time env guard. 35 tests. |
 | Live project smoke check | `npm run check:supabase` | Uses your `.env` public key against your real project: tables exist, logged-out access is refused. Read-only. |
 | Everything | `npm run check` | lint + unit + database tests + production build |
 

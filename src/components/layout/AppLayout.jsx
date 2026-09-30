@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useNavigation } from 'react-router'
 import { Menu } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { navItemsForRole } from '@/constants/navigation'
 import { useAuth } from '@/features/auth/authContext'
+import { clearChunkReloadFlag } from '@/utils/chunkReload'
 import { Brand, SidebarNav } from './Sidebar'
 import { Breadcrumbs } from './Breadcrumbs'
 import { UserMenu } from './UserMenu'
@@ -20,6 +21,9 @@ export function AppLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navigation = useNavigation() // 'loading' while a lazy page's code downloads
   const items = navItemsForRole(role)
+
+  // Pages loaded fine, so a future deploy may trigger one automatic reload again (see RouteErrorPage).
+  useEffect(() => clearChunkReloadFlag(), [])
 
   const handleSignOut = async () => {
     try {

@@ -9,9 +9,15 @@ export const authService = {
   },
 
   async signOut() {
-    // scope 'local' clears this browser's session even if the network call fails.
+    // 'local' revokes this device's session on the server and removes it from this browser.
+    // If the server can't be reached, supabase-js keeps the session, so tell the user plainly
+    // instead of pretending they are signed out.
     const { error } = await supabase.auth.signOut({ scope: 'local' })
-    if (error) throw toAppError(error)
+    if (error) {
+      const appError = toAppError(error)
+      appError.message = `Sign-out failed: ${appError.message} You are still signed in on this device.`
+      throw appError
+    }
   },
 
   /**

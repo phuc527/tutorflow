@@ -77,3 +77,24 @@ describe('service helpers', () => {
     expect(toAppError({ code: '23001', message: 'restrict' }).message).toMatch(/inactive/i)
   })
 })
+
+describe('review fixes: form validation', () => {
+  test('[FE-5] schedule longer than 12 hours is rejected in the form', () => {
+    const result = scheduleSchema.safeParse({ ...validSchedule, start: '07:00', end: '19:30' })
+    expect(result.success).toBe(false)
+    expect(result.error.issues.map((i) => i.message)).toContain('A class cannot be longer than 12 hours')
+    expect(scheduleSchema.safeParse({ ...validSchedule, start: '07:00', end: '19:00' }).success).toBe(true)
+  })
+
+  test('[FE-6] blank hourly rate is an error instead of silently 0', () => {
+    const base = { full_name: 'Test Teacher', email: 't@example.com', phone: '', specialization: '', status: 'active' }
+    expect(teacherSchema.safeParse({ ...base, hourly_rate: '' }).success).toBe(false)
+    expect(teacherSchema.parse({ ...base, hourly_rate: '0' }).hourly_rate).toBe(0)
+    expect(teacherSchema.parse({ ...base, hourly_rate: 250000 }).hourly_rate).toBe(250000)
+  })
+
+  test('new database errors map to specific messages', () => {
+    expect(toAppError({ code: '23514', message: 'x', details: 'payments_amount_locked' }).message).toMatch(/Mark it unpaid first/)
+    expect(toAppError({ code: '23001', message: 'violates RESTRICT setting of foreign key constraint "schedules_student_id_fkey"' }).message).toMatch(/classes on the calendar/)
+  })
+})

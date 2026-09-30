@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { appZoneInputToISO, formatInAppZone } from '@/utils/datetime'
 
+const minutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
 const time = z.string().regex(/^\d{2}:\d{2}$/, 'Choose a time')
 
 /**
@@ -20,6 +21,10 @@ export const scheduleSchema = z
     notes: z.string().trim().max(2000),
   })
   .refine((v) => v.end > v.start, { path: ['end'], message: 'End time must be later than start time' })
+  .refine((v) => v.end <= v.start || minutes(v.end) - minutes(v.start) <= 12 * 60, {
+    path: ['end'],
+    message: 'A class cannot be longer than 12 hours',
+  })
 
 export const scheduleDefaults = {
   student_id: '',

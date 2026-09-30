@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { queryKeys } from '@/constants/queryKeys'
+import { STALE_WRITE } from '@/services/errors'
 
 /**
  * useMutation plus the behaviour every write in the app needs:
@@ -20,6 +21,12 @@ export function useAppMutation({ mutationFn, invalidate = [], successMessage, on
       if (message) toast.success(message)
       onSuccess?.(data, variables)
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {
+      toast.error(error.message)
+      // Someone else changed the record: reload so the user sees the current version.
+      if (error.code === STALE_WRITE) {
+        for (const queryKey of invalidate) queryClient.invalidateQueries({ queryKey })
+      }
+    },
   })
 }

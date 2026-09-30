@@ -90,6 +90,8 @@ RBAC is enforced twice:
 
 Key decisions (details in the migration comments):
 
+- **Teacher records link only to logins with a confirmed email.** An unconfirmed sign-up using a
+  teacher's address gets no access and learns nothing about the record.
 - **The role lives only in `profiles.role`.** New logins are always `teacher`, and sign-up metadata is
   ignored. A column grant plus a trigger stop users changing their own role. Admins are promoted with SQL.
 - **RLS helper functions** (`private.is_admin()`, `private.current_teacher_id()`,
@@ -100,7 +102,10 @@ Key decisions (details in the migration comments):
   They're checked atomically inside the index, so two simultaneous requests can't both book the same slot.
   An app-side "check, then insert" can't guarantee that.
 - **Server-owned fields** (`created_by`, `paid_at`, `marked_by`) are set by triggers; clients have no
-  write privilege on them at all.
+  write privilege on them at all. A **paid** record's amount is frozen, and every history row stores the amount.
+- **Payment edits use optimistic concurrency** (`updated_at`), so a stale tab can't overwrite a newer change.
+- **The build refuses secret keys:** `vite.config.js` fails if any `VITE_*` value is a `service_role`/`sb_secret_` key,
+  and Vercel builds fail when the Supabase env vars are missing.
 - `TRUNCATE` (which bypasses RLS) is revoked, and logged-out visitors (`anon`) have no table access.
 
 ## Local setup
@@ -211,7 +216,10 @@ npm run dev              # http://localhost:5173
 `vercel.json` already contains:
 - a **rewrite of every path to `index.html`**, so refreshing `/payments` works. Without it Vercel
   would look for a file called `payments` and return 404.
-- basic security headers, and long-term caching for the hashed files in `/assets`.
+- security headers including a **Content-Security-Policy** (scripts only from the app itself, network
+  calls only to `*.supabase.co`), and long-term caching for the hashed files in `/assets`.
+
+After a redeploy, open tabs that request an old chunk file reload once automatically instead of crashing.
 
 Use a **separate Supabase project for production** and don't run `seed.sql` there.
 
@@ -234,8 +242,9 @@ Decisions made where the brief left room; all are easy to change.
 - **A class starts and ends on the same day** in the form (the database allows up to 12 hours).
 - **Payment amounts** default to *hours scheduled that month × the teacher's hourly rate* (rounded to
   1,000 đ) when a teacher creates the month's records, and can be edited afterwards.
-- **Payment records can't be deleted**, and teachers/students that have payment records can't be deleted
-  either; set them to *Inactive* instead. An inactive teacher immediately loses access.
+- **Payment records can't be deleted**, and teachers/students that have **classes or payment records** can't
+  be deleted either (so an admin can never remove schedules indirectly); set them to *Inactive* instead.
+  An inactive teacher immediately loses access.
 - **Unpaid is shown in amber, not red**, because green against red is indistinguishable for the most
   common colour blindness (validated: ΔE 5.0 vs 17.4 for green/amber).
 - **Teacher logins are created in the Supabase Dashboard.** Creating auth users from the app would need

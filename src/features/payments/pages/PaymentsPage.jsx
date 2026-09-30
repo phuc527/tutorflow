@@ -15,6 +15,7 @@ import { useStudentOptions } from '@/features/students/hooks'
 import { useTeacherOptions } from '@/features/teachers/hooks'
 import { useListParams } from '@/hooks/useListParams'
 import { usePermission } from '@/hooks/usePermission'
+import { STALE_WRITE } from '@/services/errors'
 import { currentBillingMonth, formatBillingMonth, formatDate } from '@/utils/datetime'
 import { formatCurrency } from '@/utils/format'
 import { isDayKey } from '@/utils/calendar'
@@ -27,7 +28,7 @@ const STATUS_OPTIONS = [
   { value: 'paid', label: 'Paid' },
 ]
 
-function TotalCard({ icon: Icon, label, count, amount, isLoading, tone }) {
+function TotalCard({ icon: Icon, label, count, amount, isLoading, isError, tone }) {
   return (
     <Card className="flex items-center gap-4 p-4">
       <div className={`rounded-md p-2 ${tone}`}>
@@ -37,6 +38,8 @@ function TotalCard({ icon: Icon, label, count, amount, isLoading, tone }) {
         <p className="text-sm text-muted-foreground">{label}</p>
         {isLoading ? (
           <Skeleton className="mt-1 h-6 w-28" />
+        ) : isError ? (
+          <p className="text-sm text-danger">Couldn’t load totals</p>
         ) : (
           <p className="text-lg font-semibold tabular-nums">
             {formatCurrency(amount)} <span className="text-sm font-normal text-muted-foreground">· {count} record{count === 1 ? '' : 's'}</span>
@@ -135,13 +138,16 @@ export default function PaymentsPage() {
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <TotalCard icon={CheckCircle2} label="Paid" tone="bg-success-soft text-success" isLoading={totalsQuery.isPending} {...totals?.paid} />
-        <TotalCard icon={CircleDashed} label="Unpaid" tone="bg-warning-soft text-warning" isLoading={totalsQuery.isPending} {...totals?.unpaid} />
+        <TotalCard icon={CheckCircle2} label="Paid" tone="bg-success-soft text-success" isLoading={totalsQuery.isPending}
+          isError={Boolean(totalsQuery.error)} {...totals?.paid} />
+        <TotalCard icon={CircleDashed} label="Unpaid" tone="bg-warning-soft text-warning" isLoading={totalsQuery.isPending}
+          isError={Boolean(totalsQuery.error)} {...totals?.unpaid} />
         <TotalCard
           icon={Wallet}
           label="Total billed"
           tone="bg-primary-soft text-primary"
           isLoading={totalsQuery.isPending}
+          isError={Boolean(totalsQuery.error)}
           count={(totals?.paid.count ?? 0) + (totals?.unpaid.count ?? 0)}
           amount={(totals?.paid.amount ?? 0) + (totals?.unpaid.amount ?? 0)}
         />
@@ -208,7 +214,9 @@ export default function PaymentsPage() {
             confirmLabel={nextStatus === 'paid' ? 'Mark paid' : 'Mark unpaid'}
             variant={nextStatus === 'paid' ? 'default' : 'destructive'}
             isPending={setStatus.isPending}
-            onConfirm={() => setStatus.mutate({ id: toggleTarget.id, status: nextStatus })}
+            onConfirm={() =>
+              setStatus.mutate({ payment: toggleTarget, status: nextStatus }, { onError: (e) => e.code === STALE_WRITE && close() })
+            }
           />
           <PaymentDetailsModal payment={dialog?.mode === 'edit' ? dialog.payment : null} onOpenChange={(open) => !open && close()} />
         </>

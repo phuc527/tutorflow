@@ -34,7 +34,7 @@ const INVALIDATE = [queryKeys.payments.all, queryKeys.students.all]
 
 export function useSetPaymentStatus({ onSuccess } = {}) {
   return useAppMutation({
-    mutationFn: ({ id, status }) => paymentsService.setStatus(id, status),
+    mutationFn: ({ payment, status }) => paymentsService.setStatus(payment, status),
     invalidate: INVALIDATE,
     successMessage: (row) => `${row.student?.full_name ?? 'Payment'} marked as ${row.status}`,
     onSuccess,
@@ -43,7 +43,7 @@ export function useSetPaymentStatus({ onSuccess } = {}) {
 
 export function useUpdatePaymentDetails({ onSuccess } = {}) {
   return useAppMutation({
-    mutationFn: ({ id, values }) => paymentsService.updateDetails(id, values),
+    mutationFn: ({ payment, values }) => paymentsService.updateDetails(payment, values),
     invalidate: INVALIDATE,
     successMessage: 'Payment updated',
     onSuccess,

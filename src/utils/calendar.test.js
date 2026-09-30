@@ -90,3 +90,16 @@ describe('day layout', () => {
     expect(byId).toEqual({ 1: [0, 2], 2: [1, 2], 3: [0, 2], 4: [0, 1] })
   })
 })
+
+describe('chunk reload + billing month', () => {
+  test('[FE-1] recognises dynamic-import failures after a redeploy', async () => {
+    const { isChunkLoadError } = await import('./chunkReload')
+    expect(isChunkLoadError(new TypeError('Failed to fetch dynamically imported module: /assets/PaymentsPage-abc.js'))).toBe(true)
+    expect(isChunkLoadError(new Error('Cannot read properties of undefined'))).toBe(false)
+  })
+
+  test('currentBillingMonth is the first of the month in Vietnam time', async () => {
+    const { currentBillingMonth } = await import('./datetime')
+    expect(currentBillingMonth()).toMatch(/^\d{4}-\d{2}-01$/)
+  })
+})

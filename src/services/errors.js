@@ -16,13 +16,20 @@ const CONSTRAINT_MESSAGES = {
   payments_paid_at_matches_status: 'Paid records must have a paid date; unpaid records must not.',
   teacher_students_unique: 'This student is already assigned to this teacher.',
   teachers_email_key: 'A teacher with this email already exists.',
+  // ON DELETE RESTRICT (migration 0007): records with history are deactivated, not deleted.
+  schedules_teacher_id_fkey: 'This teacher has classes on the calendar and can’t be deleted. Set them to Inactive instead.',
+  schedules_student_id_fkey: 'This student has classes on the calendar and can’t be deleted. Set them to Inactive instead.',
+  payments_teacher_id_fkey: 'This teacher has payment records and can’t be deleted. Set them to Inactive instead.',
+  payments_student_id_fkey: 'This student has payment records and can’t be deleted. Set them to Inactive instead.',
+  payments_amount_locked: 'The amount of a paid record can’t be changed. Mark it unpaid first.',
+  payments_schedule_mismatch: 'The linked class does not belong to this teacher and student.',
 }
 
 const CODE_MESSAGES = {
   '42501': 'You don’t have permission to do that.',
   '23505': 'This record already exists.',
   '23503': 'This record is linked to other data and can’t be changed or deleted.',
-  '23001': 'This record has payment history and can’t be deleted. Set it to inactive instead.',
+  '23001': 'This record has classes or payment history and can’t be deleted. Set it to inactive instead.',
   '23514': 'Some values are invalid.',
   '23P01': 'This time slot conflicts with an existing class.',
   '22P02': 'Some values have an invalid format.',
@@ -33,6 +40,9 @@ function findConstraint(error) {
   const text = `${error?.message ?? ''} ${error?.details ?? ''}`
   return Object.keys(CONSTRAINT_MESSAGES).find((name) => text.includes(name))
 }
+
+/** Thrown when an update matched no row because someone else changed it first (optimistic concurrency). */
+export const STALE_WRITE = 'STALE_WRITE'
 
 export class AppError extends Error {
   constructor(message, { code, cause } = {}) {

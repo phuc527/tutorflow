@@ -72,7 +72,12 @@ export function ScheduleFormModal({ open, onOpenChange, schedule, initial, teach
               </option>
             ))}
           </NativeSelect>
-          {!studentsQuery.isPending && students.length === 0 && (
+          {studentsQuery.error && (
+            <p className="text-xs text-danger" role="alert">
+              Couldn’t load your students: {studentsQuery.error.message}
+            </p>
+          )}
+          {!studentsQuery.isPending && !studentsQuery.error && students.length === 0 && (
             <p className="text-xs text-warning">No students are assigned to you yet. Ask your administrator.</p>
           )}
         </FormField>

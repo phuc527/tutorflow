@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { unwrap } from './errors'
+import { AppError, STALE_WRITE, toAppError, unwrap } from './errors'
 import { pageRange } from './query'
 
 const COLUMNS = `
@@ -8,6 +8,26 @@ const COLUMNS = `
   teacher:teachers(id, full_name),
   marker:profiles!payments_marked_by_fkey(full_name)
 `
+
+/**
+ * Optimistic concurrency: only update the row if it is still the version the user was looking at
+ * (same updated_at). If another tab or person changed it first, nothing is overwritten.
+ */
+async function guardedUpdate(payment, changes) {
+  const { data, error } = await supabase
+    .from('payments')
+    .update(changes)
+    .eq('id', payment.id)
+    .eq('updated_at', payment.updated_at)
+    .select(COLUMNS)
+  if (error) throw toAppError(error)
+  if (!data.length) {
+    throw new AppError('This payment was changed somewhere else. The list has been refreshed; please check it and try again.', {
+      code: STALE_WRITE,
+    })
+  }
+  return data[0]
+}
 
 function applyFilters(query, { month, status, teacherId, studentId }) {
   let q = query.eq('billing_month', month)
@@ -44,26 +64,19 @@ export const paymentsService = {
   },
 
   /** paid_at and marked_by are filled in by a database trigger; the client only sends the status. */
-  async setStatus(id, status) {
-    return unwrap(await supabase.from('payments').update({ status }).eq('id', id).select(COLUMNS).single())
+  async setStatus(payment, status) {
+    return guardedUpdate(payment, { status })
   },
 
-  async updateDetails(id, { amount, notes }) {
-    return unwrap(
-      await supabase
-        .from('payments')
-        .update({ amount, notes: notes?.trim() ? notes.trim() : null })
-        .eq('id', id)
-        .select(COLUMNS)
-        .single(),
-    )
+  async updateDetails(payment, { amount, notes }) {
+    return guardedUpdate(payment, { amount, notes: notes?.trim() ? notes.trim() : null })
   },
 
   async history(paymentId) {
     return unwrap(
       await supabase
         .from('payment_history')
-        .select('id, old_status, new_status, changed_at, changer:profiles(full_name)')
+        .select('id, old_status, new_status, amount, changed_at, changer:profiles(full_name)')
         .eq('payment_id', paymentId)
         .order('changed_at', { ascending: false })
         .order('id', { ascending: false }),

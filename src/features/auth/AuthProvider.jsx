@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { authService } from '@/services/authService'
 import { AuthContext } from './authContext'
@@ -14,13 +14,17 @@ export function AuthProvider({ children }) {
   const queryClient = useQueryClient()
   // undefined = still restoring from storage; null = logged out
   const [session, setSession] = useState(undefined)
+  const lastUserId = useRef(undefined)
 
   useEffect(() => {
-    return authService.onAuthStateChange((event, nextSession) => {
+    return authService.onAuthStateChange((_event, nextSession) => {
       // Keep this callback synchronous: awaiting Supabase calls inside it can deadlock the auth client.
+      const nextUserId = nextSession?.user?.id ?? null
+      // Never let one user's cached data leak into the next user's session. Clearing on any change of
+      // user (not only SIGNED_OUT) also covers a session switching directly from one user to another.
+      if (lastUserId.current !== undefined && lastUserId.current !== nextUserId) queryClient.clear()
+      lastUserId.current = nextUserId
       setSession(nextSession)
-      // Never let one user's cached data leak into the next user's session.
-      if (event === 'SIGNED_OUT') queryClient.clear()
     })
   }, [queryClient])
 
@@ -30,6 +34,9 @@ export function AuthProvider({ children }) {
     queryFn: () => authService.fetchCurrentProfile(userId),
     enabled: Boolean(userId),
     staleTime: 5 * 60_000,
+    // Re-check role / teacher status when the user comes back to the tab, so a deactivation or role
+    // change reaches the UI promptly. (The database enforces it immediately either way.)
+    refetchOnWindowFocus: true,
   })
 
   const signIn = useCallback((credentials) => authService.signIn(credentials), [])

@@ -122,7 +122,7 @@ export function PaymentTrendChart({ data }) {
                       onMouseLeave={() => setHovered(null)}
                       onFocus={() => setHovered(i)}
                       onBlur={() => setHovered(null)}
-                      className="outline-none"
+                      className="outline-none focus-visible:fill-primary/10 focus-visible:stroke-primary focus-visible:stroke-2"
                     />
                   </g>
                 )

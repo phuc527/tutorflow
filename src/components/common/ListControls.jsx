@@ -28,6 +28,15 @@ export function SearchInput({ value, onSearch, placeholder = 'Search…', classN
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced])
 
+  // The URL changed from outside (nav link, back/forward): show that value in the box.
+  // Values that came from our own typing already equal `debounced`, so typing isn't interrupted.
+  // (React's "adjust state when a prop changes" pattern: done during render, not in an effect.)
+  const [prevValue, setPrevValue] = useState(value)
+  if (value !== prevValue) {
+    setPrevValue(value)
+    if (value !== debounced) setText(value)
+  }
+
   return (
     <div className={cn('relative w-full sm:max-w-xs', className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

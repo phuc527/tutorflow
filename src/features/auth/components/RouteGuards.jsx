@@ -48,6 +48,8 @@ export function GuestOnly() {
   const { session, isLoading } = useAuth()
   const location = useLocation()
   if (isLoading) return <FullPageSpinner />
-  if (session) return <Navigate to={location.state?.from?.pathname ?? '/dashboard'} replace />
+  // Return to the page (including its filters in the query string) the user originally asked for.
+  const from = location.state?.from
+  if (session) return <Navigate to={from ? `${from.pathname}${from.search ?? ''}` : '/dashboard'} replace />
   return <Outlet />
 }

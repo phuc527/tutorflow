@@ -23,7 +23,7 @@ export function ScheduleListView({ schedules, onEventClick, showTeacher }) {
     <div className="divide-y">
       {[...groups.entries()].map(([key, items]) => (
         <section key={key}>
-          <h3 className={cn('sticky top-14 z-[1] bg-muted/80 px-4 py-2 text-sm font-semibold backdrop-blur', key === today && 'text-primary')}>
+          <h3 className={cn('bg-muted/80 px-4 py-2 text-sm font-semibold', key === today && 'text-primary')}>
             {formatInAppZone(items[0].start_time, 'EEEE, dd/MM/yyyy')}
             {key === today && <span className="ml-2 text-xs font-normal">Today</span>}
           </h3>

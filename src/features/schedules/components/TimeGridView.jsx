@@ -1,3 +1,4 @@
+import { useNow } from '@/hooks/useNow'
 import { cn } from '@/lib/utils'
 import { dayKey, eventsForDay, layoutDayEvents, todayKey, toAppZone } from '@/utils/calendar'
 import { formatInAppZone } from '@/utils/datetime'
@@ -32,7 +33,7 @@ export function TimeGridView({ days, schedules, onEventClick, onSlotClick }) {
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
   const today = todayKey()
 
-  const now = toAppZone(new Date())
+  const now = toAppZone(useNow()) // re-renders each minute so the red 'now' line moves
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
 
   const handleSlotClick = (event, key) => {
