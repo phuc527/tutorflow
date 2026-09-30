@@ -23,6 +23,11 @@ const CONSTRAINT_MESSAGES = {
   payments_student_id_fkey: 'This student has payment records and can’t be deleted. Set them to Inactive instead.',
   payments_amount_locked: 'The amount of a paid record can’t be changed. Mark it unpaid first.',
   payments_schedule_mismatch: 'The linked class does not belong to this teacher and student.',
+  role_invalid: 'Accounts can only be students or teachers here.',
+  role_self: 'You can’t change your own role.',
+  role_admin_target: 'Administrator accounts can only be changed in the database.',
+  link_not_student: 'Only student accounts can be linked to students.',
+  range_invalid: 'Choose a shorter date range.',
 }
 
 const CODE_MESSAGES = {
