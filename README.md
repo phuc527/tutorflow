@@ -1,7 +1,7 @@
 # TutorFlow
 
 A management app for a small private tutoring centre: teachers, students, class schedules and
-monthly paid/unpaid status, with role-based access for **admins** and **teachers**.
+monthly paid/unpaid status, with role-based access for **admins**, **teachers** and **students**.
 
 Built with React + Vite on the front end and **Supabase** (Postgres, Auth, Row Level Security) as
 the whole back end. There is no separate server: the browser talks to Supabase directly, and the
@@ -14,13 +14,14 @@ database itself enforces who may see and change what.
 
 ## Features
 
-| | Admin | Teacher |
-|---|---|---|
-| Dashboard | Centre-wide stats, 6-month payment chart, upcoming classes | Same page, scoped to their own students and classes |
-| Teachers | Create / edit / delete, search, status filter, pagination, "login linked" indicator | — |
-| Students | Create / edit / delete, assign teachers, filter by teacher / grade / status, this month's payment status | Read-only list of their assigned students |
-| Schedules | Month / week / day / list calendar of all classes, read-only | Create / edit / delete their own classes for assigned students; overlaps rejected |
-| Payments | View all records, totals and history, read-only | Create monthly records in one click, mark paid/unpaid with confirmation, edit amount/notes, view history |
+| | Admin | Teacher | Student (or parent) |
+|---|---|---|---|
+| Dashboard | Centre-wide stats, 6-month payment chart, upcoming classes | Same page, scoped to their own students and classes | — |
+| Teachers | Create / edit / delete, search, status filter, pagination, "login linked" indicator | — | — |
+| Students | Create / edit / delete, assign teachers, filter by teacher / grade / status, this month's payment status | Read-only list of their assigned students | — |
+| Schedules | Month / week / day / list calendar of all classes, read-only | Create / edit / delete their own classes for assigned students; overlaps rejected | **My classes**: their own classes by month, read-only |
+| Payments | View all records, totals and history, read-only | Create monthly records in one click, mark paid/unpaid with confirmation, edit amount/notes, view history | **My fees**: their own monthly fees, read-only |
+| Users | Switch accounts between student and teacher, link/unlink students | — | — |
 
 All dates and times are shown and entered in **Asia/Ho_Chi_Minh (GMT+7)**, whatever the device's timezone.
 There is no payment gateway; payment status is a manual Paid/Unpaid flag.
@@ -87,16 +88,26 @@ RBAC is enforced twice:
 | schedules | read all, **no writes** | CRUD own, assigned students only |
 | payments | read all, **no writes** | read own; create/update for assigned students; **no deletes** |
 | payment_history | read all | read history of own payments; nobody can write it directly |
+| student_accounts | read all; link/unlink via functions | — |
+
+Students have no row in this table: every table refuses them, and they read only through the
+`my_*` functions described below.
 
 Key decisions (details in the migration comments):
 
 - **Teacher records link only to logins with a confirmed email.** An unconfirmed sign-up using a
   teacher's address gets no access and learns nothing about the record.
-- **Self sign-up is limited to teachers the admin has added.** A trigger on `auth.users` refuses any
-  new login whose email doesn't match a non-inactive teacher record (until the first admin exists, so
-  that admin can be created).
-- **The role lives only in `profiles.role`.** New logins are always `teacher`, and sign-up metadata is
-  ignored. A column grant plus a trigger stop users changing their own role. Admins are promoted with SQL.
+- **Sign-up is limited to emails the centre has on file.** A trigger on `auth.users` refuses any new
+  login whose email doesn't match a non-inactive teacher or a student record (until the first admin
+  exists, so that admin can be created).
+- **Every new login is a student; the role lives only in `profiles.role`.** Sign-up metadata is ignored.
+  The admin switches accounts between student and teacher on the Users page (`set_user_role`), which
+  refuses the admin's own account, other admins and the value `admin`. Admins are promoted only with SQL.
+  A column grant plus a trigger stop anyone else changing a role.
+- **Students read only through `my_students()`, `my_schedule()` and `my_payments()`.** These return data
+  for the students linked to the caller (`student_accounts`, auto-linked by confirmed email; a parent can
+  be linked to several children). No table policy is opened to students, so they never see hourly rates,
+  teacher contact details, notes or other students.
 - **RLS helper functions** (`private.is_admin()`, `private.current_teacher_id()`,
   `private.is_assigned_to_me()`) are `SECURITY DEFINER` so policies on `profiles` don't recurse into
   themselves. They use `search_path = ''`, only ever answer questions about the caller, and live in a
@@ -182,8 +193,15 @@ service role), never through the app's API.
 
 1. In the app (as admin) create the teacher record with their email. The *Login* column shows **None**.
 2. The teacher opens `/signup`, uses that same email, and clicks the confirmation link they receive.
-   (Alternatively, **Add user** in the Dashboard with the same email.)
-3. A trigger links the confirmed login to the teacher record automatically, and *Login* turns to **Linked**.
+   The new login is a **student** with nothing linked.
+3. On **Users**, switch the account to **Teacher**. It is linked to the teacher record, and *Login*
+   turns to **Linked**.
+
+### Give students and parents a login
+
+Put their email on the student record (siblings may share a parent's email). They sign up at `/signup`,
+confirm, and are linked automatically; they see **My classes** and **My fees**. On **Users** the admin
+can remove a link or add another student to an account.
 
 With the seed data, create `teacher1@example.com` and `teacher2@example.com` to try the teacher role.
 
@@ -254,8 +272,11 @@ Decisions made where the brief left room; all are easy to change.
   An inactive teacher immediately loses access.
 - **Unpaid is shown in amber, not red**, because green against red is indistinguishable for the most
   common colour blindness (validated: ΔE 5.0 vs 17.4 for green/amber).
-- **Teachers sign themselves up; the admin can't invite from the app.** Sending invitations would need
+- **Everyone signs themselves up; the admin can't invite from the app.** Sending invitations would need
   the service-role key on a server (e.g. a Supabase Edge Function), which was out of scope.
-- **The sign-up error reveals whether an email belongs to a teacher.** A generic message would confuse
-  real teachers; for an internal tool this trade-off was accepted.
+- **The sign-up error reveals whether an email is registered with the centre.** A generic message would
+  confuse real users; for an internal tool this trade-off was accepted.
+- **Changing a student's email moves access**: logins matching the old email lose that student
+  (including links the admin added by hand), so a corrected typo never leaves a child's data with the
+  wrong parent.
 - No password-reset screen in the app yet; admins can send a reset from the Dashboard.

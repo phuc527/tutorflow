@@ -57,7 +57,7 @@ export default function SignupPage() {
   return (
     <AuthShell
       title="Create your account"
-      description="For teachers your tutoring center has already added. Use the email the administrator has on file."
+      description="For students, parents and teachers. Use the email your tutoring center has on file."
       footer={<>Already have an account? {signInLink}</>}
     >
       <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>

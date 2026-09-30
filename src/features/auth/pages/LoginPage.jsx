@@ -33,10 +33,10 @@ export default function LoginPage() {
   return (
     <AuthShell
       title="Sign in"
-      description="Teachers added by your tutoring center can create their own account."
+      description="Students, parents and teachers registered with the center can create their own account."
       footer={
         <>
-          New teacher?{' '}
+          New here?{' '}
           <Link to="/signup" className="font-medium text-primary underline-offset-4 hover:underline">
             Create an account
           </Link>

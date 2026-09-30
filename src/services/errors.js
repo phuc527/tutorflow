@@ -67,10 +67,10 @@ export function toAppError(error) {
   if (CODE_MESSAGES[error.code]) return new AppError(CODE_MESSAGES[error.code], { code: error.code, cause: error })
 
   // Sign-up refused by the allowlist trigger (migration 0008). Supabase Auth hides the database
-  // error behind this generic message; at sign-up it only happens for emails the admin hasn't added.
+  // error behind this generic message; at sign-up it only happens for emails not on a teacher or student record.
   if (error.message === 'Database error saving new user') {
     return new AppError(
-      'This email hasn’t been added by your tutoring center. Ask your administrator to add you as a teacher first.',
+      'This email isn’t registered with your tutoring center. Ask the center to add it to your student or teacher record first.',
       { code: error.code, cause: error },
     )
   }
