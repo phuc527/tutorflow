@@ -1,0 +1,4 @@
+# Store text files with LF endings in the repo on every OS (SQL and shell scripts care).
+* text=auto eol=lf
+*.png binary
+*.jpg binary

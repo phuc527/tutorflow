@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { Outlet } from 'react-router'
 import { Menu } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { navItemsForRole } from '@/constants/navigation'
+import { useAuth } from '@/features/auth/authContext'
 import { Brand, SidebarNav } from './Sidebar'
 import { Breadcrumbs } from './Breadcrumbs'
 import { UserMenu } from './UserMenu'
@@ -13,9 +15,18 @@ import { UserMenu } from './UserMenu'
  * - desktop (lg+): fixed sidebar on the left
  * - mobile/tablet: sidebar hidden, opened as a slide-in drawer from the menu button
  */
-export function AppLayout({ profile, navItems, onSignOut }) {
+export function AppLayout() {
+  const { profile, role, signOut } = useAuth()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const items = navItems ?? navItemsForRole(profile?.role ?? null)
+  const items = navItemsForRole(role)
+
+  const handleSignOut = async () => {
+    try {
+      await signOut() // RequireAuth sees the session disappear and redirects to /login
+    } catch (error) {
+      toast.error(error.message)
+    }
+  }
 
   return (
     <div className="min-h-dvh">
@@ -45,7 +56,7 @@ export function AppLayout({ profile, navItems, onSignOut }) {
           <div className="min-w-0 flex-1">
             <Breadcrumbs />
           </div>
-          <UserMenu profile={profile} onSignOut={onSignOut} />
+          <UserMenu profile={profile} onSignOut={handleSignOut} />
         </header>
 
         <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
